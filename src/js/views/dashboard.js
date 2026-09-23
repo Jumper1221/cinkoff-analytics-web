@@ -1,11 +1,12 @@
 // Вьюха «Дашборд»: KPI, заказы по месяцам, по годам, топы.
-import { api, fmtMoney, fmtNum, fmtMln, monthName, chartColors, makeChart, destroyChart } from "../common.js";
+import { api, fmtMoney, fmtNum, fmtMln, monthName, fmtDate, chartColors, makeChart, destroyChart } from "../common.js";
 
 let chartMonths = null, chartStatus = null, chartTop = null;
 
 export default {
   data: () => ({ loading: true, error: "", kpi: null, years: [], months: [], contractors: [], topItems: [], statuses: [], fresh: {},
-  cmp: null, cmpKind: "month", cmpAnchor: "", cmpLoading: false, cmpError: "" }),
+  cmp: null, cmpKind: "month", cmpAnchor: "", cmpLoading: false, cmpError: "",
+  lead: null, cancels: null, stale: null }),
   async mounted() {
     try {
       const [kpi, years, months, contractors, topItems, statuses, fresh] = await Promise.all([
@@ -19,12 +20,46 @@ export default {
     this.loading = false;
     await this.$nextTick();
     this.loadCompare();
+    this.loadOps();
     this.renderAll();
     this._unwatch = this.$watch(() => document.documentElement.dataset.theme, () => this.renderAll(), { deep: false });
     window.addEventListener("resize", this.renderAll = this.renderAll || (() => this.renderAll.call(this)));
   },
   beforeUnmount() { this._unwatch && this._unwatch(); },
-  methods: { fmtMoney, fmtNum, fmtMln, monthName, api, chartColors, makeChart,
+  methods: { fmtMoney, fmtNum, fmtMln, monthName, fmtDate, api, chartColors, makeChart,
+    async loadOps() {
+      try {
+        const [lead, cancels, stale] = await Promise.all([
+          this.api("/api/leadtime", { months: 12 }),
+          this.api("/api/cancel_rate", { months: 12 }),
+          this.api("/api/stale", { days: 30, limit: 8 }),
+        ]);
+        this.lead = lead; this.cancels = cancels; this.stale = stale;
+        this.$nextTick(() => this.renderOps());
+      } catch (e) { this.cmpError = String(e); }
+    },
+    renderOps() {
+      const C = chartColors();
+      if (!this.$refs.opsChart) return;
+      const labels = this.lead.map(l => l.label);
+      if (this._opsChart) this._opsChart.destroy();
+      this._opsChart = new Chart(this.$refs.opsChart, {
+        type: "bar",
+        data: { labels, datasets: [
+          { label: "Медиана, дней", data: this.lead.map(l => +(+l.median_days).toFixed(1)),
+            backgroundColor: C.accent + "88", borderRadius: 3, yAxisID: "y" },
+          { type: "line", label: "p90, дней", data: this.lead.map(l => +(+l.p90_days).toFixed(1)),
+            borderColor: C.orange, tension: .3, pointRadius: 2, yAxisID: "y" },
+          { type: "line", label: "% отмен", data: this.cancels.map(c => +c.pct),
+            borderColor: C.red, tension: .3, pointRadius: 2, yAxisID: "y2" },
+        ]},
+        options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          scales: { y:  { position: "left",  title: { display: true, text: "дней" }, ticks: { color: C.muted }, grid: { color: C.border } },
+                    y2: { position: "right", title: { display: true, text: "% отмен" }, ticks: { color: C.muted }, grid: { drawOnChartArea: false } },
+                    x:  { ticks: { color: C.muted, maxTicksLimit: 12 }, grid: { display: false } } },
+          plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
+      });
+    },
     async loadCompare() {
       this.cmpLoading = true; this.cmpError = "";
       try {
@@ -137,6 +172,22 @@ export default {
         <div v-else class="loading">…</div>
       </div>
       <div class="card"><h3>Заказы по месяцам</h3><div class="chart-box"><canvas id="c-months"></canvas></div></div>
+      <div class="card">
+        <h3>Скорость исполнения и отмены (12 мес)</h3>
+        <div class="chart-box"><canvas ref="opsChart"></canvas></div>
+        <div v-if="stale && stale.length" style="margin-top:12px">
+          <h3 style="font-size:14px; margin:0 0 6px">Давно без финала (30+ дн, статус не «Машина отгружена» и не «Отменен»)</h3>
+          <table class="data"><tbody>
+            <tr v-for="r in stale" :key="r.order_id">
+              <td>{{ r.number }}</td><td>{{ fmtDate(r.order_date) }}</td>
+              <td><span class="badge">{{ r.order_status }}</span></td>
+              <td class="num">{{ r.age_days }} дн</td>
+              <td class="num">{{ fmtMoney(r.sum) }}</td>
+              <td>{{ (r.contractor_name || "—").slice(0, 24) }}</td>
+            </tr>
+          </tbody></table>
+        </div>
+      </div>
       <div class="grid2">
         <div class="card"><h3>По годам</h3>
           <table class="data"><thead><tr><th>Год</th><th>Заказов</th><th>Сумма</th><th>Средний</th></tr></thead>
