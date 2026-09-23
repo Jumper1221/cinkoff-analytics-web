@@ -9,6 +9,16 @@ export default {
   mounted() {
     this._openOrderH = (e) => this.openOrder(e.detail);
     window.addEventListener("open-order", this._openOrderH); this.load(); this.loadStatuses(); },
+  computed: {
+    csvUrl() {
+      const p = new URLSearchParams();
+      if (this.q) p.set("q", this.q);
+      if (this.status) p.set("status", this.status);
+      if (this.from) p.set("date_from", this.from);
+      if (this.to) p.set("date_to", this.to);
+      return "/api/export/orders.csv?" + p.toString();
+    },
+  },
   methods: { api, fmtMoney, fmtDate, fmtNum,
     async openOrder(oid) {
       this.dossier = null; this.dossierOpen = true; this.dossierError = "";
@@ -35,6 +45,7 @@ export default {
     <h1 class="page-title">Заказы</h1>
     <p class="page-sub">{{ total }} заказов · страница {{ page }} из {{ totalPages() }}</p>
     <div class="controls">
+        <a class="ghost" :href="csvUrl" download style="text-decoration:none; align-self:stretch; display:flex; align-items:center; padding:0 14px">CSV</a>
       <input type="search" v-model="q" placeholder="Поиск: номер, контрагент…" style="min-width:280px">
       <select v-model="status"><option value="">Все статусы</option><option v-for="s in statuses" :value="s">{{ s }}</option></select>
       <input type="date" v-model="from" title="с даты">
