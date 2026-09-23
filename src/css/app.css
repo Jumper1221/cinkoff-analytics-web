@@ -134,3 +134,19 @@ button.ghost.active { border-color: var(--accent); color: var(--accent); }
 .card { contain: layout; }          /* перерисовка карточки не трогает соседей */
 .main { scroll-behavior: smooth; }
 html, body { overflow-y: scroll; }  /* скроллбар всегда есть — нет прыжка ширины */
+
+/* ── C11: телефон (<640px) ── */
+@media (max-width: 640px){
+  .kpis { grid-template-columns:1fr 1fr; gap:10px; }
+  .kpi .v { font-size:20px; }
+  .page-title { font-size:20px; }
+  .page-sub { font-size:12px; }
+  .controls { flex-wrap:wrap; gap:8px; }
+  .controls input, .controls select { min-width:0; flex:1 1 140px; }
+  .data { display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .data thead, .data tbody, .data tr { display:table; width:100%; }
+  .card { padding:12px; }
+  .chart-box { height:200px !important; }
+  .modal { margin:12px; max-height:calc(100vh - 24px); overflow-y:auto; }
+  td.num, th.num { white-space:nowrap; }
+}
