@@ -9,6 +9,7 @@ const VIEWS = {
   prices:    { title: "Цены",     ico: "₽"  },
   heatmap:   { title: "Годы",     ico: "📅" },
   forecast:  { title: "Прогноз",   ico: "⏳" },
+  cohorts:   { title: "Точки",     ico: "🏬" },
 };
 
 const { createApp, ref, computed } = Vue;

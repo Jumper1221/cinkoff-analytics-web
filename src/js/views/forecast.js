@@ -2,7 +2,7 @@
 import { api, fmtNum, fmtDate, chartColors } from "../common.js";
 
 export default {
-  data: () => ({ loading: true, error: "", rows: [], days: 90, flagFilter: "all" }),
+  data: () => ({ loading: true, error: "", rows: [], days: 90, flagFilter: "all", pairs: [] }),
   watch: { days() { this.load(); } },
   mounted() { this.load(); },
   computed: {
@@ -15,7 +15,10 @@ export default {
   methods: { api, fmtNum,
     async load() {
       this.loading = true;
-      try { this.rows = (await this.api("/api/forecast/remnants", { days: this.days, top: 120 })).rows; }
+      try {
+        this.rows = (await this.api("/api/forecast/remnants", { days: this.days, top: 120 })).rows;
+        this.pairs = (await this.api("/api/basket/pairs", { days: this.days, top: 10 })).pairs;
+      }
       catch (e) { this.error = String(e); }
       this.loading = false;
     },
@@ -54,6 +57,17 @@ export default {
           </tr>
         </tbody>
       </table>
+    </div>
+    <div class="card" v-if="pairs.length" style="margin-top:14px">
+      <h3>Топ-пары заказов <span class="muted" style="font-weight:400; font-size:12px">за {{ days }} дн</span></h3>
+      <table class="data"><tbody>
+        <tr v-for="(p, i) in pairs" :key="i">
+          <td style="width:45%">{{ (p.a_name || "—").slice(0, 40) }}</td>
+          <td class="muted" style="width:8px; white-space:nowrap">+</td>
+          <td>{{ (p.b_name || "—").slice(0, 40) }}</td>
+          <td class="num"><b>{{ p.cnt }}</b> раз</td>
+        </tr>
+      </tbody></table>
     </div>
   </div>`
 };
