@@ -17,6 +17,30 @@ async function boot() {
     setup() {
       const route = ref(new URLSearchParams(location.hash.slice(1)).get("v") || "dashboard");
       const theme = ref(localStorage.getItem("theme") || "light");
+      const showSearch = ref(false);
+      const searchQ = ref("");
+      const searchRes = ref({ orders: [], items: [] });
+      const searchBusy = ref(false);
+      let searchTimer = null;
+
+      function doSearch() {
+        clearTimeout(searchTimer);
+        if (searchQ.value.length < 2) { searchRes.value = { orders: [], items: [] }; return; }
+        searchTimer = setTimeout(async () => {
+          searchBusy.value = true;
+          try {
+            searchRes.value = await fetch(`/api/search_all?q=${encodeURIComponent(searchQ.value)}`).then(r => r.json());
+          } finally { searchBusy.value = false; }
+        }, 250);
+      }
+      function openSearch() { showSearch.value = true; searchQ.value = ""; searchRes.value = { orders: [], items: [] }; }
+      function closeSearch() { showSearch.value = false; }
+      function goOrder(oid) { closeSearch(); location.hash = "v=orders"; setTimeout(() => window.dispatchEvent(new CustomEvent("open-order", { detail: oid })), 300); }
+
+      window.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); showSearch.value ? closeSearch() : openSearch(); }
+        if (e.key === "Escape") closeSearch();
+      });
 
       function nav(v) {
         if (!VIEWS[v]) return;
@@ -34,7 +58,8 @@ async function boot() {
         if (VIEWS[v]) route.value = v;
       });
 
-      return { route, theme, nav, toggleTheme, VIEWS };
+      return { route, theme, nav, toggleTheme, VIEWS,
+              showSearch, searchQ, searchRes, searchBusy, doSearch, openSearch, closeSearch, goOrder };
     },
     template: `
   <div class="shell">
@@ -48,11 +73,43 @@ async function boot() {
       <button class="toggle-theme" @click="toggleTheme" :title="theme">
         {{ theme === "dark" ? "☀" : "☾" }}
       </button>
-      <div class="side-foot">v0.2 · данные: Postgres</div>
+      <button class="ghost" style="width:100%; margin-bottom:8px; font-size:12.5px" @click="openSearch" title="Ctrl+K">
+        🔍 Поиск <span class="d" style="opacity:.6">Ctrl+K</span>
+      </button>
+      <div class="side-foot">v0.3 · данные: Postgres</div>
     </aside>
     <main class="main">
       <component :is="route + '-view'"></component>
     </main>
+
+    <div v-if="showSearch" class="modal-mask" @click.self="closeSearch" style="align-items:flex-start; background:rgba(0,0,0,.35)">
+      <div class="modal" style="max-width:640px; margin-top:8vh; padding:14px">
+        <input type="search" v-model="searchQ" @input="doSearch" placeholder="Заказы, контрагенты, товары…"
+               style="width:100%; font-size:16px; padding:10px 14px" autofocus>
+        <div v-if="searchBusy" class="loading" style="padding:14px">…</div>
+        <div v-else-if="searchQ.length >= 2">
+          <div v-if="searchRes.orders && searchRes.orders.length">
+            <h3 style="margin:12px 0 4px; font-size:13px; color:var(--muted)">ЗАКАЗЫ</h3>
+            <table class="data"><tbody>
+              <tr v-for="o in searchRes.orders" :key="o.order_id" @click="goOrder(o.order_id)" style="cursor:pointer">
+                <td>{{ o.number }}</td><td>{{ (o.contractor_name||"").slice(0,26) }}</td>
+                <td><span class="badge">{{ o.order_status }}</span></td><td class="num">{{ Number(o.sum).toLocaleString("ru") }} ₽</td>
+              </tr>
+            </tbody></table>
+          </div>
+          <div v-if="searchRes.items && searchRes.items.length">
+            <h3 style="margin:12px 0 4px; font-size:13px; color:var(--muted)">ТОВАРЫ</h3>
+            <table class="data"><tbody>
+              <tr v-for="it in searchRes.items" :key="it.id_1c" @click="closeSearch(); $nextTick(()=>location.hash='v=items')" style="cursor:pointer">
+                <td>{{ (it.full_name||"").slice(0,70) }}</td>
+                <td class="muted">{{ it.color || "" }} {{ it.thickness || "" }}</td>
+              </tr>
+            </tbody></table>
+          </div>
+          <div v-if="!(searchRes.orders||[]).length && !(searchRes.items||[]).length" class="loading" style="padding:20px">Ничего не найдено</div>
+        </div>
+      </div>
+    </div>
   </div>`
   });
 

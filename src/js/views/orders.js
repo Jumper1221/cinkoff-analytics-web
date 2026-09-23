@@ -6,7 +6,9 @@ export default {
                  q: "", status: "", from: "", to: "", statuses: [], dossierOpen: false, dossier: null, dossierError: "" }),
   watch: { q() { this.debounced(); }, status() { this.load(); }, from() { this.load(); }, to() { this.load(); }, page() { this.load(); } },
   created() { this.debounced = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => { this.page = 1; this.load(); }, 350); }; })(); },
-  mounted() { this.load(); this.loadStatuses(); },
+  mounted() {
+    this._openOrderH = (e) => this.openOrder(e.detail);
+    window.addEventListener("open-order", this._openOrderH); this.load(); this.loadStatuses(); },
   methods: { api, fmtMoney, fmtDate, fmtNum,
     async openOrder(oid) {
       this.dossier = null; this.dossierOpen = true; this.dossierError = "";
@@ -27,7 +29,7 @@ export default {
     prev() { if (this.page > 1) this.page--; },
     next() { if (this.page < this.totalPages()) this.page++; },
   },
-  beforeUnmount() { clearTimeout(this._t); },
+  beforeUnmount() { window.removeEventListener("open-order", this._openOrderH); clearTimeout(this._t); },
   template: `
   <div>
     <h1 class="page-title">Заказы</h1>
