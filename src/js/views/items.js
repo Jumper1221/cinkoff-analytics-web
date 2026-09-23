@@ -72,16 +72,49 @@ export default {
           </tbody>
         </table>
       </div>
-      <div class="card" v-if="sel">
-        <h3>{{ sel.full_name && sel.full_name.slice(0, 80) }}</h3>
-        <table class="data">
-          <thead><tr><th>Филиал</th><th>Цена</th><th>Со скидкой</th><th>Версия</th></tr></thead>
-          <tbody>
-            <tr v-for="p in prices" :key="p.branch_id_1c">
-              <td>{{ p.branch }}</td><td class="num">{{ fmtMoney(p.price, 2) }}</td><td class="num">{{ fmtMoney(p.discount_price, 2) }}</td><td>{{ (p.version_date||"").slice(0,10) }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="card" v-if="sel && !card"><div class="loading">Загрузка карточки…</div></div>
+      <div v-if="card">
+        <div class="kpis" style="margin-bottom:14px">
+          <div class="kpi"><div class="l">Куплено всего</div><div class="v">{{ fmtNum(card.sold_all.units) }}</div><div class="d">ед · {{ fmtMln(card.sold_all.revenue) }} · {{ card.sold_all.orders_cnt }} заказов</div></div>
+          <div class="kpi"><div class="l">За 12 мес</div><div class="v">{{ fmtNum(card.sold12.units) }}</div><div class="d">ед · {{ fmtMln(card.sold12.revenue) }}</div></div>
+          <div class="kpi"><div class="l">Последний заказ</div><div class="v" style="font-size:17px">{{ card.sold_all.last_order ? fmtDate(card.sold_all.last_order) : "—" }}</div></div>
+          <div class="kpi"><div class="l">Характеристики</div><div class="d">{{ card.info.color || "—" }} · {{ card.info.thickness || "—" }} · {{ card.info.surface || "—" }} · {{ card.info.weight || "—" }} кг</div></div>
+        </div>
+        <div class="grid2">
+          <div class="card">
+            <h3>Динамика цены</h3>
+            <div class="chart-box" v-if="card.price_history.length"><canvas ref="cardPrice"></canvas></div>
+            <div v-else class="loading">Нет данных о цене</div>
+          </div>
+          <div>
+            <div class="card" style="margin-bottom:14px">
+              <h3>Цены по филиалам</h3>
+              <table class="data"><tbody>
+                <tr v-for="p in prices.slice(0, 12)" :key="p.branch_id_1c">
+                  <td>{{ p.branch }}</td><td class="num">{{ fmtMoney(p.price, 2) }}</td>
+                  <td class="num"><b>{{ fmtMoney(p.discount_price, 2) }}</b></td>
+                </tr>
+              </tbody></table>
+            </div>
+            <div class="card" v-if="card.remnants.length" style="margin-bottom:14px">
+              <h3>Остатки / приход</h3>
+              <table class="data"><tbody>
+                <tr v-for="(r, i) in card.remnants.slice(0, 8)" :key="i">
+                  <td>{{ r.branch }}</td><td class="num">{{ r.qty }} шт</td>
+                  <td class="muted" v-if="r.delivery_date">приход {{ r.delivery_date }}</td>
+                </tr>
+              </tbody></table>
+            </div>
+            <div class="card" v-if="card.together.length">
+              <h3>Покупают вместе</h3>
+              <table class="data"><tbody>
+                <tr v-for="(t, i) in card.together" :key="i">
+                  <td>{{ (t.name || "—").slice(0, 45) }}</td><td class="num">{{ t.cnt }} раз</td>
+                </tr>
+              </tbody></table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>`
