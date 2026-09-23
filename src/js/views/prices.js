@@ -2,7 +2,7 @@
 import { api, fmtMoney, fmtDate, chartColors, makeChart } from "../common.js";
 let ch = null;
 export default {
-  data: () => ({ loading: false, error: "", q: "", results: [], sel: null, history: [] }),
+  data: () => ({ loading: false, error: "", q: "", results: [], sel: null, history: [], spreadChart: null, spreadRows: [], spreadPct: 0 }),
   created() { this.debSearch = (() => { let t; return () => { clearTimeout(t); t = setTimeout(this.search, 350); }; })(); },
   methods: { api, fmtMoney, chartColors, makeChart, fmtDate,
     async search() {
