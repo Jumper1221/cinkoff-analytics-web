@@ -8,6 +8,7 @@ const VIEWS = {
   remnants:  { title: "Остатки",  ico: "🏭" },
   prices:    { title: "Цены",     ico: "₽"  },
   heatmap:   { title: "Годы",     ico: "📅" },
+  forecast:  { title: "Прогноз",   ico: "⏳" },
 };
 
 const { createApp, ref, computed } = Vue;
