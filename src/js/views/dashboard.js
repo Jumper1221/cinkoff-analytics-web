@@ -4,7 +4,8 @@ import { api, fmtMoney, fmtNum, fmtMln, monthName, chartColors, makeChart, destr
 let chartMonths = null, chartStatus = null, chartTop = null;
 
 export default {
-  data: () => ({ loading: true, error: "", kpi: null, years: [], months: [], contractors: [], topItems: [], statuses: [], fresh: {} }),
+  data: () => ({ loading: true, error: "", kpi: null, years: [], months: [], contractors: [], topItems: [], statuses: [], fresh: {},
+  cmp: null, cmpKind: "month", cmpAnchor: "", cmpLoading: false, cmpError: "" }),
   async mounted() {
     try {
       const [kpi, years, months, contractors, topItems, statuses, fresh] = await Promise.all([
@@ -17,12 +18,21 @@ export default {
     } catch (e) { this.error = String(e); }
     this.loading = false;
     await this.$nextTick();
+    this.loadCompare();
     this.renderAll();
     this._unwatch = this.$watch(() => document.documentElement.dataset.theme, () => this.renderAll(), { deep: false });
     window.addEventListener("resize", this.renderAll = this.renderAll || (() => this.renderAll.call(this)));
   },
   beforeUnmount() { this._unwatch && this._unwatch(); },
   methods: { fmtMoney, fmtNum, fmtMln, monthName, api, chartColors, makeChart,
+    async loadCompare() {
+      this.cmpLoading = true; this.cmpError = "";
+      try {
+        this.cmp = await this.api("/api/compare", { period: this.cmpKind, anchor: this.cmpAnchor, steps: 2 });
+      } catch (e) { this.cmpError = String(e); }
+      this.cmpLoading = false;
+    },
+    setAnchor(ev) { this.cmpAnchor = ev.target.value; this.loadCompare(); },
    renderAll() { this.renderMonths(); this.renderStatus(); this.renderTop(); },
     renderMonths() {
       const C = chartColors();
@@ -93,6 +103,38 @@ export default {
         <div class="kpi"><div class="l">Сумма 30 дней</div><div class="v">{{ fmtMln(kpi.sum_30d) }}</div></div>
         <div class="kpi"><div class="l">Средний чек 30 дн</div><div class="v">{{ fmtMoney(kpi.avg_30) }}</div></div>
         <div class="kpi"><div class="l">Заказов всего</div><div class="v">{{ fmtNum(fresh.total_orders) }}</div><div class="d">с 2019</div></div>
+      </div>
+      <div class="card">
+        <h3>Сравнение периодов</h3>
+        <div class="controls" style="margin-bottom:10px">
+          <div class="seg">
+            <button :class="{active: cmpKind==='month'}" @click="cmpKind='month'; loadCompare()">Месяц</button>
+            <button :class="{active: cmpKind==='quarter'}" @click="cmpKind='quarter'; loadCompare()">Квартал</button>
+            <button :class="{active: cmpKind==='year'}" @click="cmpKind='year'; loadCompare()">Год</button>
+          </div>
+          <input type="text" :placeholder="cmpKind==='year' ? '2026' : (cmpKind==='quarter' ? '2026-Q3' : '2026-09')" v-model="cmpAnchor" @keyup.enter="loadCompare" style="width:130px">
+          <button class="ghost" @click="loadCompare" :disabled="cmpLoading">{{ cmpLoading ? "…" : "Сравнить" }}</button>
+        </div>
+        <div v-if="cmpError" class="error">{{ cmpError }}</div>
+        <div v-else-if="cmp" class="kpis" style="margin-bottom:0">
+          <div class="kpi" v-for="(c, i) in cmp" :key="c.label">
+            <div class="l">{{ c.label }}</div>
+            <div class="v">{{ fmtNum(c.orders) }} <span class="d">заказов</span></div>
+            <div class="d">{{ fmtMln(c.revenue) }} · средний {{ fmtMoney(c.avg_check) }}</div>
+            <div class="d" v-if="i + 1 < cmp.length">
+              <span :style="{color: (c.d_orders >= 0 ? 'var(--green)' : 'var(--red)')}">
+                {{ c.d_orders >= 0 ? "▲" : "▼" }} {{ Math.abs(c.d_orders) }} ({{ c.p_orders }}%)
+              </span>
+              ·
+              <span :style="{color: (c.d_revenue >= 0 ? 'var(--green)' : 'var(--red)')}">
+                {{ c.d_revenue >= 0 ? "▲" : "▼" }} {{ fmtMln(Math.abs(c.d_revenue)) }}
+              </span>
+              против {{ cmp[i+1].label }}
+            </div>
+            <div class="d">отмен: {{ c.canceled }} ({{ c.orders ? Math.round(100*c.canceled/c.orders) : 0 }}%)</div>
+          </div>
+        </div>
+        <div v-else class="loading">…</div>
       </div>
       <div class="card"><h3>Заказы по месяцам</h3><div class="chart-box"><canvas id="c-months"></canvas></div></div>
       <div class="grid2">
