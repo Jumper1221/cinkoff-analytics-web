@@ -1,6 +1,16 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import { useUiStore } from './stores/ui'
+import { useSearchStore } from './stores/search'
+import SearchOverlay from './components/SearchOverlay.vue'
+
 const ui = useUiStore()
+const search = useSearchStore()
+function onKey(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); search.toggle() }
+}
+onMounted(() => window.addEventListener('keydown', onKey))
+onUnmounted(() => window.removeEventListener('keydown', onKey))
 const nav = [
   { to: '/', label: 'Дашборд' },
   { to: '/orders', label: 'Заказы' },
@@ -30,5 +40,6 @@ const nav = [
         <div v-for="t in ui.toasts" :key="t.id" class="toast" :class="{ err: t.kind === 'err' }">{{ t.text }}</div>
       </div>
     </main>
+    <SearchOverlay />
   </div>
 </template>

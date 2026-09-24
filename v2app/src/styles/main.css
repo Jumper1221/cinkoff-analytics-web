@@ -67,3 +67,25 @@ tr.click:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 .ellipsis { max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .up { color: var(--ok); } .down { color: var(--err); }
 tr.click { cursor: pointer; }
+
+.hits { margin-top: 10px; }
+.hit { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.hit:last-child { border-bottom: none; }
+.search-modal { width: 640px; max-width: 92vw; }
+.f-search.big { width: 100%; font-size: 16px; padding: 10px 12px; margin-bottom: 8px; }
+.small { font-size: 11px; }
+.mask { position: fixed; inset: 0; background: rgba(0,0,0,.38); display: flex; align-items: flex-start; justify-content: center; padding: 60px 16px; z-index: 40; }
+.modal { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; width: 760px; max-width: 96vw; max-height: 84vh; overflow: auto; }
+.modal .x { position: absolute; right: 10px; top: 10px; border: none; background: none; color: var(--muted); cursor: pointer; font-size: 16px; }
+.modal h2 { margin: 0 26px 6px 0; font-size: 16px; }
+.flags .badge { margin-right: 6px; }
+
+/* heatmap */
+.hm { display: flex; flex-direction: column; gap: 3px; }
+.hm-row { display: grid; grid-template-columns: 52px repeat(12, 1fr); gap: 3px; }
+.hm-head { font-size: 11px; color: var(--muted); }
+.hm-cell { border-radius: 6px; padding: 6px 2px; text-align: center; font-size: 11px; min-height: 34px; display: flex; align-items: center; justify-content: center; }
+.hm-mlab { background: none; color: var(--muted); }
+.hm-ylab { display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; font-weight: 600; color: var(--muted); }
+.hm-ylab.cur { color: var(--accent); }
+.chart-box.tall { height: 420px; }
