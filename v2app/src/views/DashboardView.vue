@@ -53,7 +53,7 @@ const { canvas: cStatus } = useChart(() => {
 }, stData as Ref<unknown>)
 
 // ── скорость+отмены (bar-медиана, line-p90, line-%отмен)
-const opsDep = computed(() => [lead.data, cancels.data])
+const opsDep = computed(() => (lead.data.value?.length ?? 0) + ':' + (cancels.data.value?.length ?? 0))
 const { canvas: cOps } = useChart(() => {
   const l = lead.data.value, c = cancels.data.value
   if (!l?.length || !c?.length) return null

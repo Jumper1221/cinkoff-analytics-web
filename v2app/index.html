@@ -6,6 +6,11 @@
     <title>Cinkoff Analytics</title>
   </head>
   <body>
+    <script>
+    window.__errs = [];
+    window.onerror = function(msg, src, l, c) { window.__errs.push(String(msg).slice(0, 120) + ' @' + String(src).split('/').pop() + ':' + l); document.body && document.body.setAttribute('data-errs', window.__errs.join(' | ')); return false; }
+    window.addEventListener('unhandledrejection', function(e) { window.__errs.push('PR:' + String(e.reason).slice(0, 120)); document.body && document.body.setAttribute('data-errs', window.__errs.join(' | ')); });
+    </script>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

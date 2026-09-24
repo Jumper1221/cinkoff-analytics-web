@@ -119,3 +119,5 @@ tr.click { cursor: pointer; }
 .empty { padding: 34px 10px; text-align: center; color: var(--muted); }
 .empty .big { font-size: 34px; display: block; margin-bottom: 8px; opacity: .6; }
 .kpi .v.skel { height: 28px; width: 110px; }
+
+.chart-box canvas { display: block; }
