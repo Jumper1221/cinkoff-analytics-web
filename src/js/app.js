@@ -78,7 +78,7 @@ async function boot() {
       <button class="ghost" style="width:100%; margin-bottom:8px; font-size:12.5px" @click="openSearch" title="Ctrl+K">
         🔍 Поиск <span class="d" style="opacity:.6">Ctrl+K</span>
       </button>
-      <div class="side-foot">v0.3 · данные: Postgres</div>
+      <div class="side-foot">v0.4 · данные: Postgres</div>
     </aside>
     <main class="main">
       <component :is="route + '-view'"></component>
