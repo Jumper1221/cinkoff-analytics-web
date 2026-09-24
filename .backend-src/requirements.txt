@@ -1,0 +1,8 @@
+APScheduler==3.11.0
+psycopg2-binary==2.9.10
+requests==2.32.3
+tzdata==2025.2
+tzlocal==5.3.1
+fastapi==0.115.0
+uvicorn==0.30.6
+jinja2==3.1.4

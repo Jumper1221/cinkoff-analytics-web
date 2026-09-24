@@ -1,18 +1,46 @@
-# Фронтенд-обёртка: сборка-SPA-v2-из-этого-репо → nginx-с-прок-си-на-бэк.
-# Запуск-ВСЕГО:  docker compose up -d --build   (в-корне-этого-репо)
-# Обновление-фронт-а-после-правок:  docker compose up -d --build frontend
+# ПОЛНЫЙ-стек-аналитики. Вход-на-сайте: порт-8010 (в-закрепах-Мих-аила).
+# Архитектура: nginx-фронт (SPA-v2, /v2) + прок-си-/api-на-бэк + легаси-«/»-через-бэк.
 #
-# Требует-запущенного-стека-пар-сер-а (cinkoff_parser/docker-compose.yml):
-# там-ЖИВУТ-БД-и-FastAPI-бэк-енд-«web»-—-фронт-прис-оедин-яет-ся-к-его-сети.
+# ЗАП-УСК-ВСЕГО-ПЕРВЫЙ-РАЗ (из-КОРНЯ-ЭТО-ГО-реп-о):
+#   1)  docker network create cinkoff_parser_default   (если-ещё-нет)
+#   2)  docker compose -f ../../cinkoff_parser/docker-compose.yml up -d db orders-fetcher  # БД+фет-чер-из-реп-о-пар-сер-а
+#       # (та-же-команда-из-кат-алога-пар-сер-а: docker compose up -d db orders-fetcher)
+#   3)  docker compose up -d --build   # ← этот-репо-поднимает-«backend»-и-«frontend»
+#
+# ОБНОВЛЕНИЕ-ФРОНТА:  docker compose up -d --build frontend
+# ОБНОВЛЕНИЕ-БЭКА (web.py-и-т-п.):  скопировать-в-.backend-src/-и-так-же-—-up -d --build backend
+#
+# БД-торчит-наружу-только-на-127.0.0.1:5433 (крон-синк-с-хоста) —-LAN-не-вид-ит.
 
 services:
+  backend:
+    image: cinkoff-analytics-backend:latest
+    build:
+      context: .backend-src          # в-нём-—-сн-и-мок-пар-сер-а (web.py, app/, schema.sql)
+    container_name: cinkoff-analytics-backend
+    depends_on: []
+    environment:
+      PG_HOST: db
+      # C12: пароль-входа-на-сайт (пусто = без-пар-ол-я):
+      WEB_PASSWORD: ""
+      PG_PORT: 5432
+      PG_DB: orders
+      PG_USER: orders
+      PG_PASSWORD: ${PG_PASSWORD:-orders_password_change_me}
+    command: ["python", "-u", "web.py"]
+    restart: unless-stopped
+    networks:
+      - parser
+
   frontend:
     build: .
     image: cinkoff-analytics-frontend:latest
     container_name: cinkoff-analytics-frontend
-    restart: unless-stopped
+    depends_on:
+      - backend
     ports:
-      - "8011:8080"        # http://<host>:8011/v2/ — новый-фронт; / — легаси-через-бэк
+      - "8010:8080"        # ← ГЛАВНЫЙ-ВХОД (в-закрепах): /v2 — новый-фронт, / — легаси-через-бэк
+    restart: unless-stopped
     networks:
       - parser
 

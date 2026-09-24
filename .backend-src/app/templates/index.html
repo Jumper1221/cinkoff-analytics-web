@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="GRID, width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cinkoff — аналитика заказов</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0e1116; --panel: #161b22; --border: #21262d; --text: #e6edf3; --muted: #8b949e;
+  --accent: #58a6ff; --green: #3fb950; --orange: #d29922; --red: #f85149;
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--t3) || var(--text); font:14px/1.5 -apple-system, 'Segoe UI', Roboto, sans-serif; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 24px 20px 60px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 24px; }
+.kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; margin-bottom:24px; }
+.kpi { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+.kpi .v { font-size:24px; font-weight:600; }
+.kpi .l { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+.kpi .d { color:var(--muted); font-size:12px; }
+.grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; }
+.card h2 { font-size:15px; margin:0 0 12px; color:var(--text); font-weight:600; }
+.card.wide { grid-column: 1 / -1; }
+canvas { max-width:100%; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; color:var(--muted); font-weight:500; padding:6px 8px; border-bottom:1px solid var(--border); }
+td { padding:5px 8px; border-bottom:1px solid #1b2129; }
+tr:hover td { background:#1c2129; }
+.num { text-align:right; font-variant-numeric: tabular-nums; }
+input[type=search] { background:#0d1117; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; width:100%; max-width:420px; }
+#results td, #results th { padding:4px 8px; }
+footer { margin-top:32px; color:var(--muted); font-size:12px; }
+.g { color:var(--green); } .o { color:var(--orange); } .r { color:var(--red); }
+@media (max-width: 900px){ .grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cinkoff — аналитика заказов</h1>
+  <p class="sub">GrandLine → Postgres · история с 2019 · последнее обновление: {{ fresh.fmt_last }} · актуальность остатков: {{ last_snap.d }}</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">{{ kpi.orders_today | default(0) }}</div><div class="l">заказов сегодня</div></div>
+    <div class="kpi"><div class="v">{{ '%d'|format(kpi.orders_30d or 0) }}</div><div class="l">заказов 30д</div></div>
+    <div class="kpi"><div class="v">{{ '%.1f'|format((kpi.sum_30 or 0)/1e6) }} млн</div><div class="l">сумма 30 дней</div></div>
+    <div class="kpi"><div class="v">{{ '%d'|format(kpi.avg_30 or 0) }} ₽</div><div class="l">средний чек 30 дн</div></div>
+    <div class="kpi"><div class="v">{{ '%d'|format(fresh.total_orders) }}</div><div class="l">заказов всего</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card wide">
+      <h2>Заказы по месяцам (сумма, млн ₽ / шт)</h2>
+      <canvas id="chart-months" height="110"></canvas>
+    </div>
+    <div class="card">
+      <h2>По годам</h2>
+      <table>
+        <tr><th>Год</th><th class="num">Заказов</th><th class="num">Сумма, млн</th><th class="num">Средний, ₽</th></tr>
+        {% for y in years %}
+        <tr><td>{{ y.year }}</td><td class="num">{{ y.cnt }}</td>
+            <td class="num">{{ '%.1f'|format(y.revenue/1e6) }}</td>
+            <td class="num">{{ '%d'|format(y.avg_check) }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+    <div class="card">
+      <h2>Топ-10 позиций (выручка, млн ₽)</h2>
+      <canvas id="chart-top-items" height="200"></canvas>
+      <table>
+        {% for t in top_items %}
+        <tr><td>{{ t.name[:60] }}</td><td class="num">{{ '%.2f'|format(t.revenue/1e6) }} млн</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+    <div class="card">
+      <h2>Топ-10 контрагентов (25 мес)</h2>
+      <table>
+        <tr><th>Контрагент</th><th class="num">Заказов</th><th class="num">Млн</th></tr>
+        {% for c in contractors %}
+        <tr><td>{{ c.contractor_name }}</td><td class="num">{{ c.orders }}</td><td class="num">{{ '%.1f'|format(c.revenue/1e6) }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+    <div class="card">
+      <h2>Статусы заказов (25 мес)</h2>
+      <canvas id="chart-status" height="180"></canvas>
+    </div>
+    <div class="card wide">
+      <h2>Поиск по каталогу (название, цвет, размер)</h2>
+      <input id="q" type="search" placeholder="например: металлочерепица 0,5 or саморезы" oninput="dosearch()">
+      <div id="results"></div>
+    </div>
+  </div>
+  <footer>Cinkoff Analytics · данные: Postgres (этап 0: 8 705 заказов / 231k каталог / 1.2M остатков / 6.7M цен) · всего {{ '%d'|format(fresh.total_orders) }} заказов с 2019</footer>
+</div>
+<script>
+const MONTHS = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+// месяцы
+const m = {{ months_json }};
+Chart.defaults.color = '#8b949e';
+Chart.defaults.borderColor = '#21262d';
+new Chart(document.getElementById('chart-months'), {
+  type: 'bar',
+  data: {labels: m.map(r => MONTHS[r.month-1] + " '" + String(r.year).slice(2)),
+         datasets: [
+           {label: 'Сумма, млн', data: m.map(r => (r.total/1e6).toFixed(1)), yAxisID: 'y1', backgroundColor: '#58a6ff66', borderWidth: 0, borderRadius: 3},
+           {type:'line', label: 'Заказов', data: m.map(r => r.cnt), yAxisID: 'y2', borderColor: '#3fb950', tension: .3, pointRadius: 2}
+         ]},
+  options: {plugins:{legend:{display:true, labels:{boxWidth:10}}}, scales:{
+    y1:{position:'left', title:{display:true,text:'млн ₽'}},
+    y2:{position:'right', title:{display:true,text:'заказов'}, grid:{drawOnChartArea:false}}
+  }}
+});
+// топ-товары
+const ti = {{ top_items_json }};
+new Chart(document.getElementById('chart-top-items'), {
+  type:'bar', data:{labels: ti.map(t=>t.name.slice(0,28)), datasets:[{data: ti.map(t=>(t.revenue/1e6).toFixed(2)), backgroundColor:'#d2992299', borderRadius:3}]},
+  options:{indexAxis:'y', plugins:{legend:{display:false}}}
+});
+// статусы
+const st = {{ statuses_json }};
+new Chart(document.getElementById('chart-status'), {
+  type:'doughnut',
+  data:{labels: st.map(s=>s.status), datasets:[{data: st.map(s=>s.cnt)}]},
+  options:{plugins:{legend:{position:'right', labels:{boxWidth:12}}}}
+});
+// поиск
+let t;
+function dosearch(){
+  clearTimeout(t);
+  t = setTimeout(async () => {
+    const q = document.getElementById('q').value;
+    if (q.length < 2) { document.getElementById('results').innerHTML = ''; return; }
+    const r = await fetch(`/api/search?s=${encodeURIComponent(q)}`);
+    const j = await r.json();
+    document.getElementById('results').innerHTML = '<table class="num">' +
+      '<tr><th>Товар</th><th>Цена</th><th>Скидка</th><th>Филиал</th><th>Версия</th></tr>' +
+      j.map(x => `<tr><td>${(x.full_name||'').slice(0,60)}</td><td class="num">${(+x.price).toLocaleString('ru')}₽</td><td class="num">${(+x.discount_price).toLocaleString('ru')}₽</td><td>${x.branch}</td><td>${(x.version_date||'').slice(0,10)}</td></tr>`).join('') + '</table>';
+  }, 250);
+}
+</script>
+</body>
+</html>
