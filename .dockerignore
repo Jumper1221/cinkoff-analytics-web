@@ -1,0 +1,7 @@
+v2app/node_modules
+v2app/dist
+v2app/coverage
+src/
+docs/
+*.md
+.git/

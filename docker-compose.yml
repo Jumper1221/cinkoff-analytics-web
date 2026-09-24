@@ -1,0 +1,22 @@
+# Фронтенд-обёртка: сборка-SPA-v2-из-этого-репо → nginx-с-прок-си-на-бэк.
+# Запуск-ВСЕГО:  docker compose up -d --build   (в-корне-этого-репо)
+# Обновление-фронт-а-после-правок:  docker compose up -d --build frontend
+#
+# Требует-запущенного-стека-пар-сер-а (cinkoff_parser/docker-compose.yml):
+# там-ЖИВУТ-БД-и-FastAPI-бэк-енд-«web»-—-фронт-прис-оедин-яет-ся-к-его-сети.
+
+services:
+  frontend:
+    build: .
+    image: cinkoff-analytics-frontend:latest
+    container_name: cinkoff-analytics-frontend
+    restart: unless-stopped
+    ports:
+      - "8011:8080"        # http://<host>:8011/v2/ — новый-фронт; / — легаси-через-бэк
+    networks:
+      - parser
+
+networks:
+  parser:
+    external: true
+    name: cinkoff_parser_default
