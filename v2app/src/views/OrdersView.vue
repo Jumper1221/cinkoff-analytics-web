@@ -57,7 +57,9 @@ function closeOrder() { sel.value = null }
       <input v-model="toDate" type="date" class="f-date" />
       <a class="csv" :href="csvUrl">CSV</a>
     </div>
-    <div v-if="orders.loading.value" class="muted">Загрузка…</div>
+    <div v-if="orders.loading.value">
+        <div v-for="r in 12" :key="r" class="skel skel-row" />
+      </div>
     <div v-else-if="orders.error.value" class="err-text">{{ orders.error.value }}</div>
     <template v-else>
       <table>
@@ -70,7 +72,7 @@ function closeOrder() { sel.value = null }
             <td>{{ r.branch_name }}</td><td><span class="badge">{{ r.order_status }}</span></td>
             <td class="num">{{ fmtMoney(r.sum) }}</td>
           </tr>
-          <tr v-if="!orders.data.value?.items?.length"><td colspan="6" class="muted">Ничего не найдено</td></tr>
+          <tr v-if="!orders.data.value?.items?.length"><td colspan="6" class="empty"><span class="big">🔍</span>По этому фильтру заказов нет</td></tr>
         </tbody>
       </table>
       <div class="pager">

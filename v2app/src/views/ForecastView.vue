@@ -28,7 +28,7 @@ const prs = computed(() => (pairs.data.value?.pairs ?? []) as PairRow2[])
   <h1>Прогноз</h1>
   <div class="panel">
     <h3>На сколько хватит остатков (темп расхода за 90 дней)</h3>
-    <div v-if="fc.loading.value" class="muted">Считаю…</div>
+    <div v-if="fc.loading.value"><div v-for="r in 12" :key="r" class="skel skel-row" /></div>
     <div v-else-if="fc.error.value" class="err-text">{{ fc.error.value }}</div>
     <template v-else>
       <p class="flags">

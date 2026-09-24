@@ -50,7 +50,9 @@ const totalRev = computed(() => (abc.data.value ?? []).reduce((s, r) => s + (r.r
     </div>
 
     <div v-if="mode === 'top'">
-      <div v-if="top.loading.value" class="muted">Загрузка…</div>
+      <div v-if="top.loading.value">
+        <div v-for="r in 8" :key="r" class="skel skel-row" />
+      </div>
       <div v-else-if="top.error.value" class="err-text">{{ top.error.value }}</div>
       <table v-else>
         <thead><tr><th>#</th><th>Товар</th><th class="num">Шт</th><th class="num">Выручка</th></tr></thead>
@@ -64,7 +66,9 @@ const totalRev = computed(() => (abc.data.value ?? []).reduce((s, r) => s + (r.r
     </div>
 
     <div v-else>
-      <div v-if="abc.loading.value" class="muted">Считаю ABC…</div>
+      <div v-if="abc.loading.value">
+          <div v-for="r in 10" :key="r" class="skel skel-row" />
+        </div>
       <div v-else-if="abc.error.value" class="err-text">{{ abc.error.value }}</div>
       <template v-else>
         <p class="muted">A — 80% выручки, B — след. 15%, C — хвост 5%. Всего: {{ fmtMoney(totalRev) }} за 365 дн</p>

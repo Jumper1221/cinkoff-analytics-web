@@ -100,7 +100,9 @@ const signCls = (p: number) => (p > 0 ? 'up' : p < 0 ? 'down' : '')
 <template>
   <h1>Дашборд</h1>
 
-  <div v-if="kpi.loading.value" class="muted">Загрузка KPI…</div>
+  <div v-if="kpi.loading.value" class="kpis">
+    <div v-for="i in 4" :key="i" class="panel kpi"><div class="v skel"></div><div class="l">…</div></div>
+  </div>
   <div v-else-if="kpi.error.value" class="panel err-text">{{ kpi.error.value }}</div>
   <div v-else class="kpis">
     <div class="panel kpi"><div class="v">{{ fmtInt(kpi.data.value?.orders_today) }}</div><div class="l">Заказов сегодня</div></div>

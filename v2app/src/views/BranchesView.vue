@@ -68,12 +68,12 @@ const { canvas: cRet } = useChart(() => {
   </div>
   <div class="panel">
     <h3>Активность по месяцам (24 мес)</h3>
-    <div v-if="co.loading.value" class="muted">Загрузка…</div>
+    <div v-if="co.loading.value"><div class="skel" style="height: 300px" /></div>
     <div v-else class="chart-box"><canvas ref="cActive" /></div>
   </div>
   <div class="panel">
     <h3>Retention: возвращаемость точек через 3 мес</h3>
-    <div v-if="co.loading.value" class="muted">Загрузка…</div>
+    <div v-if="co.loading.value"><div class="skel" style="height: 300px" /></div>
     <div v-else class="chart-box"><canvas ref="cRet" /></div>
   </div>
 </template>

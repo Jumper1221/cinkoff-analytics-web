@@ -40,7 +40,7 @@ const withPct = computed(() => (years.data.value ?? []).map(y => ({
   <h1>Годы</h1>
   <div class="panel">
     <h3>Выручка по годам (только исполненные: «Машина отгружена» + «Отгружен»)</h3>
-    <div v-if="years.loading.value" class="muted">Загрузка…</div>
+    <div v-if="years.loading.value"><div v-for="r in 6" :key="r" class="skel skel-row" /></div>
     <div v-else-if="years.error.value" class="err-text">{{ years.error.value }}</div>
     <div v-else class="chart-box"><canvas ref="cYears" /></div>
   </div>

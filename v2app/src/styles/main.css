@@ -49,11 +49,30 @@ tr.click:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 .toast.err { border-left-color: var(--err); }
 
 @media (max-width: 640px) {
-  .sidebar { width: 60px; }
+  .sidebar { width: 56px; padding: 10px 6px; }
   .brand, .nav-item .lbl, .sidebar-foot { display: none; }
-  .main { padding: 12px; }
-  table { display: block; overflow-x: auto; }
+  .nav-item { text-align: center; padding: 9px 4px; }
+  .main { padding: 12px 10px 40px; }
+  h1 { font-size: 17px; }
+  .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi .v { font-size: 18px; }
+  .kpi .l { font-size: 11px; }
+  .panel { padding: 10px 12px; border-radius: 10px; }
+  .cols { gap: 10px; }
+  .chart-box { height: 240px; }
+  .chart-box.sq, .chart-box.tall { height: 300px; }
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .ellipsis { max-width: 180px; }
+  .hm-row { grid-template-columns: 40px repeat(12, 1fr); gap: 2px; }
+  .hm-cell { padding: 3px 1px; font-size: 9px; min-height: 26px; }
+  .theme-btn { padding: 3px 8px; }
+  .modal { padding: 14px; max-height: 90vh; }
+  .mask { padding: 24px 8px; align-items: stretch; }
+  .pager { flex-wrap: wrap; gap: 6px; }
+  .cmp-bar { gap: 6px; }
+  .seg { padding: 3px 9px; font-size: 12px; }
 }
+.layout-direction-hint { display: none; }
 
 .chart-box { position: relative; height: 300px; }
 .chart-box.sq { height: 260px; }
@@ -89,3 +108,14 @@ tr.click { cursor: pointer; }
 .hm-ylab { display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; font-weight: 600; color: var(--muted); }
 .hm-ylab.cur { color: var(--accent); }
 .chart-box.tall { height: 420px; }
+
+/* ── R3: скелетоны, empty-state, тултипы ── */
+.skel { position: relative; overflow: hidden; background: color-mix(in srgb, var(--muted) 18%, transparent); border-radius: 6px; }
+.skel::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--panel) 70%, transparent), transparent);
+  animation: shimmer 1.2s infinite; }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+.skel-row { height: 30px; margin: 6px 0; }
+.empty { padding: 34px 10px; text-align: center; color: var(--muted); }
+.empty .big { font-size: 34px; display: block; margin-bottom: 8px; opacity: .6; }
+.kpi .v.skel { height: 28px; width: 110px; }

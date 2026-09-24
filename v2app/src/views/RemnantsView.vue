@@ -47,7 +47,7 @@ const { canvas: cHist } = useChart(() => {
   <h1>Остатки</h1>
   <div class="panel">
     <h3>Динамика по видам (по всем снапшотам: {{ (hist.data.value?.dates ?? []).length }})</h3>
-    <div v-if="hist.loading.value" class="muted">Считаю историю…</div>
+    <div v-if="hist.loading.value"><div class="skel" style="height: 300px" /></div>
     <div v-else-if="hist.error.value" class="err-text">{{ hist.error.value }}</div>
     <div v-else class="chart-box"><canvas ref="cHist" /></div>
   </div>
@@ -58,7 +58,7 @@ const { canvas: cHist } = useChart(() => {
         <option v-for="d in (dates.data.value?.dates ?? [])" :key="d" :value="d">{{ d }}</option>
       </select>
     </div>
-    <div v-if="rem.loading.value" class="muted">Загрузка…</div>
+    <div v-if="rem.loading.value"><div v-for="r in 10" :key="r" class="skel skel-row" /></div>
     <div v-else-if="rem.error.value" class="err-text">{{ rem.error.value }}</div>
     <table v-else>
       <thead><tr><th>Товар</th><th>Филиал</th><th class="num">Кол-во</th><th>Приход</th></tr></thead>
