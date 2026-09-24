@@ -55,7 +55,7 @@ export default {
     <table v-else class="data">
       <thead><tr><th>Номер</th><th>Дата</th><th>Контрагент</th><th>Филиал</th><th>Статус</th><th class="num">Сумма</th></tr></thead>
       <tbody>
-        <tr v-for="r in rows" :key="r.order_id">
+        <tr v-for="r in rows" :key="r.order_id" @click="openOrder(r.order_id)" :style="{cursor:'pointer'}" :title="'Досье ' + r.number">
           <td>{{ r.number }}</td><td>{{ fmtDate(r.order_date) }}</td><td>{{ r.contractor_name }}</td>
           <td>{{ r.branch_name }}</td><td><span class="badge">{{ r.order_status }}</span></td><td class="num">{{ fmtMoney(r.sum) }}</td>
         </tr>
