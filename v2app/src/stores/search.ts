@@ -11,7 +11,7 @@ export const useSearchStore = defineStore('search', {
       if (this.q.trim().length < 2) { this.hits = []; return }
       this.loading = true; this.err = ''
       try {
-        const r = await fetch(`/api/search_all?s=${encodeURIComponent(this.q.trim())}`)
+        const r = await fetch(`/api/search_all?q=${encodeURIComponent(this.q.trim())}`)
         if (!r.ok) throw new Error(`${r.status}`)
         const j = await r.json()
         this.hits = [
