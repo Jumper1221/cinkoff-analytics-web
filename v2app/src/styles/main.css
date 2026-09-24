@@ -54,3 +54,16 @@ tr.click:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
   .main { padding: 12px; }
   table { display: block; overflow-x: auto; }
 }
+
+.chart-box { position: relative; height: 300px; }
+.chart-box.sq { height: 260px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.cmp-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.seg { padding: 4px 12px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; user-select: none; }
+.seg.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; }
+.seg input { display: none; }
+.anchor { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px 8px; }
+.ellipsis { max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up { color: var(--ok); } .down { color: var(--err); }
+tr.click { cursor: pointer; }
