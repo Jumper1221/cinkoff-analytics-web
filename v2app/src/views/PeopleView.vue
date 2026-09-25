@@ -40,7 +40,9 @@ interface MonthRow { month: string; deals: number; revenue: number; avg_check: n
 interface PYRow { pm: string; deals: number; revenue: number; avg_check: number }
 
 const cmpApi = useApi<CompareResp>(() => (cmpMode.value && cmpPeople.value.length >= 1 ? (() => {
-  const p = new URLSearchParams({ people: cmpPeople.value.map(encodeURIComponent).join(';'), months: String(months.value) })
+  // ВАЖНО:URLSearchParams-сам-кодирует-—-лишний-encodeURIComponent-давал-двойное-кодирование
+  // (бэк-получал-%D0%95...-вместо-Ермолаева-→-пустые-серии-→-график-сравнения-никогда-не-рисовался)
+  const p = new URLSearchParams({ people: cmpPeople.value.join(';'), months: String(months.value) })
   if (dayFrom.value) p.set('ship_from', dayFrom.value)
   if (dayTo.value) p.set('ship_to', dayTo.value)
   return `/api/people/compare?${p.toString()}`
@@ -67,6 +69,13 @@ function isoD(d: Date) { return d.toISOString().slice(0, 10) }
 const todayChip = () => { dayFrom.value = dayTo.value = isoD(new Date()); presetDays.value = true }
 const yestChip = () => { const d = new Date(); d.setDate(d.getDate() - 1); dayFrom.value = dayTo.value = isoD(d); presetDays.value = true }
 const weekChip = () => { const a = new Date(); const b = new Date(); a.setDate(a.getDate() - 6); dayFrom.value = isoD(a); dayTo.value = isoD(b); presetDays.value = true }
+// клик-по-человеку:面板-появляется-в-DOM-ПОЗЖЕ-данных —- грузим-деталку-ЯВНО (даже-если-человек-тот-же):
+function pickPerson(p: string) {
+  const changed = selected.value !== p
+  selected.value = p
+  cmpMode.value = false
+  if (!changed) detail.load() // если-тот-же: watch-не-сработает —- перезагружаем-вручную
+}
 // ── ПЕРЕЗАГРУЗКИ (useApi-здесь-без-авто-watch —- вызываем-вручную) ──
 watch(months, () => {
   sum.load()
@@ -257,7 +266,7 @@ watch(pChip, (v) => { months.value = v })
     <table>
       <thead><tr><th>Ответственный</th><th class="num">Сделок</th><th class="num">В-среднем/мес</th><th class="num">Выручка</th></tr></thead>
       <tbody>
-        <tr v-for="s in (sum.data.value?.summary ?? [])" :key="s.person" class="click" @click="selected = s.person; cmpMode = false">
+        <tr v-for="s in (sum.data.value?.summary ?? [])" :key="s.person" class="click" @click="pickPerson(s.person)">
           <td>{{ s.person }}</td>
           <td class="num">{{ fmtInt(s.deals_total) }}</td>
           <td class="num">{{ s.deals_per_month.toFixed(1) }}</td>

@@ -31,6 +31,8 @@ export function useChart(draw: () => ChartConfiguration | null, dep: Ref<unknown
   function render() {
     if (!canvas.value) return
     const cfg = draw()
+    ;(window as any).__chartLog = (window as any).__chartLog || []
+    ;(window as any).__chartLog.push(`render: canvas=${!!canvas.value} cfg=${cfg ? (cfg as any).type : 'null'}`)
     if (!cfg) { inst?.destroy(); inst = null; return }
     if (inst) inst.destroy()
     // responsive-режим-в-некоторых-условиях-не-делает-первый-кадр (ResizeObserver-в-момент-вирт-времени-хрома / спят-лей-аут):
@@ -49,6 +51,8 @@ export function useChart(draw: () => ChartConfiguration | null, dep: Ref<unknown
     await nextTick()
     if (depVal() != null) render()
   })
+  // панель-с-канвасом-может-появиться-в-DOM-ПОЗЖЕ-данных (v-if) —- рисуем-и-при-появлении-канваса:
+  watch(canvas, async (cv) => { if (cv && depVal() != null) { await nextTick(); render() } })
   watch(depVal as () => unknown, async (v) => {
     if (v != null) { await nextTick(); render() }
   })
