@@ -171,7 +171,9 @@ const slideHint = computed(() => {
   return '25.09.25 → 25.09.26-подобное-скользящее-окно'
 })
 function isoD(d: Date) { return d.toISOString().slice(0, 10) }
-const todayChip = () => { dayFrom.value = dayTo.value = isoD(new Date()); presetDays.value = true }
+const isoYM = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+const todayChip = () => { fmMode.value = 'preset'; dayFrom.value = dayTo.value = isoD(new Date()); presetDays.value = true }
+const curMonthChip = () => { fmMode.value = 'month'; const n = new Date(); fmMonth.value = isoYM(n); applyMonthFilter() }
 const yestChip = () => { const d = new Date(); d.setDate(d.getDate() - 1); dayFrom.value = dayTo.value = isoD(d); presetDays.value = true }
 const weekChip = () => { const a = new Date(); const b = new Date(); a.setDate(a.getDate() - 6); dayFrom.value = isoD(a); dayTo.value = isoD(b); presetDays.value = true }
 // клик-по-человеку: панель-появляется-в-DOM-ПОЗЖЕ-данных — грузим-деталку-ЯВНО (даже-если-человек-тот-же)
@@ -444,6 +446,7 @@ watch(pChip, (v) => { months.value = v })
           <button class="seg-btn" :class="{ on: presetDays && dayFrom === isoD(new Date()) && dayTo === isoD(new Date()) }" @click="todayChip">Сегодня</button>
           <button class="seg-btn" :class="{ on: presetDays && (() => { const d = new Date(); d.setDate(d.getDate() - 1); return dayFrom === isoD(d) && dayTo === isoD(d) })() }" @click="yestChip">Вчера</button>
           <button class="seg-btn" :class="{ on: presetDays && (() => { const a = new Date(); a.setDate(a.getDate() - 6); return dayFrom === isoD(a) && dayTo === isoD(new Date()) })() }" @click="weekChip">Неделя</button>
+          <button class="seg-btn" :class="{ on: fmMode === 'month' && fmMonth === isoYM(new Date()) }" @click="curMonthChip">Месяц</button>
         </div>
         <button class="btn-range" :class="{ act: manualActive }" @click.stop="togglePop" :title="slideHint || 'Изменить период'">
           📅 {{ rangeLabel }} <span class="caret">▾</span>
@@ -554,17 +557,18 @@ watch(pChip, (v) => { months.value = v })
 .btn-range .caret { opacity: .55; font-size: 10px; }
 .x-reset { border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 50%; width: 26px; height: 26px; cursor: pointer; line-height: 1; }
 .x-reset:hover { color: var(--err); border-color: var(--err); }
-.period-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: flex; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.14); padding: 14px; min-width: 560px; }
-.pop-col { padding: 0 14px; min-width: 150px; display: flex; flex-direction: column; gap: 8px; }
-.pop-col:first-child { padding-left: 0; }
+.period-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.14); padding: 14px 6px; width: max-content; max-width: min(720px, calc(100vw - 320px)); }
+.pop-col { padding: 0 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pop-col:first-child { padding-left: 2px; }
+.pop-col:last-child { padding-right: 0; }
 .pop-sep { width: 1px; background: var(--line); }
 .pop-h { font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
 .pop-sel { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
-.pop-years { display: flex; flex-wrap: wrap; gap: 5px; max-width: 190px; }
+.pop-years { display: flex; flex-wrap: wrap; gap: 5px; max-width: 210px; }
 .yr { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
 .yr.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .pop-hint { font-size: 11px; color: var(--muted); }
-.pop-dates { display: flex; gap: 6px; align-items: center; }
+.pop-dates { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .pop-dates .arr { color: var(--muted); }
 .pop-apply { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
 .pop-apply:disabled { opacity: .45; cursor: default; }
@@ -574,7 +578,7 @@ watch(pChip, (v) => { months.value = v })
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
 .chip-sep { color: var(--muted); padding: 0 2px; }
-.qf-select, .qf-date { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 10px; font-size: 12.5px; }
+.qf-select, .qf-date { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 5px 8px; font-size: 12.5px; }
 .qf-select:focus, .qf-date:focus { outline: none; border-color: var(--accent); }
 .chip-ghosty { opacity: .85; }
 .cmp-pick { display: flex; gap: 5px; flex-wrap: wrap; }
