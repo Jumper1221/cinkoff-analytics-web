@@ -172,7 +172,7 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
   <div class="panel">
     <!-- строка 1: быстрые фильтры -->
     <div class="qf-row">
-      <span class="qf-title">Заказы за период</span>
+      <span class="qf-title">Заказы за период<span v-if="totalShown"> — {{ totalShown.toLocaleString('ru-RU') }}</span></span>
       <div class="qf-group" style="position: relative;">
         <div class="seg">
           <button class="seg-btn" :class="{ on: fromDate === iso(new Date()) && toDate === fromDate }" @click="today">Сегодня</button>
@@ -213,7 +213,6 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
           </div>
         </div>
       </div>
-      <span class="qf-total">{{ totalShown ? totalShown.toLocaleString('ru-RU') + ' зак.' : '—' }}</span>
       <button v-if="hasFilter" class="chip-ghost" @click="clearAll" title="Сбросить-все-фильтры (включая-поиск-и-статус)">✕ сброс</button>
     </div>
 
