@@ -19,6 +19,7 @@ interface MonthResp {
   prev_year_same_month: { pm: string; deals: number; revenue: number; avg_check: number }[]
 }
 interface CompareResp { months: string[]; series: Record<string, { month: string; deals: number; revenue: number }[]> }
+interface DayRow { day: string; deals: number; revenue: number }
 
 const qsSum = computed(() => {
   const p = new URLSearchParams({ months: String(months.value) })
@@ -98,9 +99,31 @@ const { canvas: cTop } = useChart(() => {
   } as any
 }, dep as Ref<unknown>)
 
-// ── график-2: помесячная-динамика-выбранного-человека + прошлый-год-в-тот-же-месяц ──
+// ── график-2: динамика-выбранного-человека (дни-при-дневном-фильтре, месяцы-иначе) ──
 const { canvas: cPerson } = useChart(() => {
   const d = detail.data.value
+  const s = sum.data.value as any
+  if (presetDays.value) {
+    // ── дневной-режим: столбики-по-ДНЯМ (ось-общая-для-обоих-людей: пропущенные-дни = нули) ──
+    const all = new Set<string>()
+    for (const arr of Object.values(s?.by_day ?? {})) for (const r of (arr as DayRow[])) all.add(r.day)
+    const labels = [...all].sort()
+    if (!labels.length) return null
+    const C = chartColors()
+    return {
+      type: 'bar',
+      data: { labels,
+        datasets: [
+          { type: 'bar', label: 'Выручка, млн/день', data: labels.map(l => +(((s.by_day[selected.value] || []).find((r: DayRow) => r.day === l)?.revenue ?? 0) / 1e6).toFixed(2)), backgroundColor: C.accent + 'CC', borderRadius: 3, yAxisID: 'y' },
+          { type: 'line', label: 'Сделок', data: labels.map(l => (s.by_day[selected.value] || []).find((r: DayRow) => r.day === l)?.deals ?? 0), borderColor: C.ok, tension: 0.3, pointRadius: 2, yAxisID: 'y2' },
+        ] },
+    options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+                y2: { position: 'right', ticks: { color: C.muted }, grid: { drawOnChartArea: false } },
+                x: { ticks: { color: C.muted, maxTicksLimit: 12 }, grid: { display: false } } },
+      plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
+    } as any
+  }
   if (!d?.monthly?.length) return null
   const C = chartColors()
   const labels = d.monthly.map((m: MonthRow) => m.month)
@@ -122,12 +145,36 @@ const { canvas: cPerson } = useChart(() => {
   } as any
 }, depD as Ref<unknown>)
 
-// ── график-3: сравнение-людей (dep-от-cmpApi, а-не-от-sum!) ──
+// ── график-3: сравнение-людей (месяцы-ИЛИ-дни —- в-дневном-режиме-ось-по-ДНЯМ) ──
 const cmpPalette = ['#3b82f6', '#16a34a', '#f59e0b', '#a855f7', '#ef4444']
 const { canvas: cCmp } = useChart(() => {
+  const C = chartColors()
+  const s = sum.data.value as any
+  if (presetDays.value) {
+    // дневная-ось-О-Б-Щ-А-Я: все-дни-с-диапазона-фильтра, пропуски = нули
+    const all = new Set<string>()
+    for (const arr of Object.values(s?.by_day ?? {})) for (const r of (arr as DayRow[])) all.add(r.day)
+    if (dayFrom.value && dayTo.value) { // заполнить-пропущенные-дни-ряда
+      for (let d0 = new Date(dayFrom.value + 'T00:00:00'); d0 <= new Date(dayTo.value + 'T23:59:59'); d0.setDate(d0.getDate() + 1)) all.add(isoD(d0))
+    }
+    const labels = [...all].sort()
+    if (!labels.length) return null
+    const people = Object.keys(s?.by_day ?? {}).filter((p: string) => cmpPeople.value.includes(p))
+    if (!people.length) return null
+    return {
+      type: 'line',
+      data: { labels: labels.map(shortDay),
+        datasets: people.map((p, i) => ({ label: shortName(p),
+          data: labels.map(l => +(((s.by_day[p] || []).find((r: DayRow) => r.day === l)?.revenue ?? 0) / 1e6).toFixed(3)),
+          borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0.3, pointRadius: 2, fill: false })) },
+      options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+                  x: { ticks: { color: C.muted, maxTicksLimit: 12 }, grid: { display: false } } },
+        plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
+    } as any
+  }
   const d = cmpApi.data.value as CompareResp | null
   if (!d?.months?.length || !d?.series) return null
-  const C = chartColors()
   const people = Object.keys(d.series)
   if (!people.length) return null
   return {
@@ -167,6 +214,7 @@ const cmpTable = computed(() => {
   }).sort((x, y) => y.rev - x.rev)
 })
 
+const shortDay = (iso: string) => (iso ? iso.slice(8) + '.' + iso.slice(5, 7) : '—')  // 25.09
 const fmtShortMonth = (iso: string) => {
   if (!iso) return '—'
   const [y, m] = iso.split('-')
@@ -223,7 +271,7 @@ watch(pChip, (v) => { months.value = v })
 
   <div class="panel" v-if="selected && !cmpMode">
     <div class="hdr-row">
-      <h3>{{ selected }} —- помесячно ({{ months }} мес)</h3>
+      <h3>{{ selected }} —- динамика ({{ presetDays ? (dayFrom === dayTo ? dayFrom : dayFrom + " → " + dayTo) : months + " мес" }})</h3>
       <button class="chip-ghost" @click="cmpMode = true">← к-сравнению</button>
     </div>
     <div class="chart-box" style="height: 320px"><canvas ref="cPerson"></canvas></div>

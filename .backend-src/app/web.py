@@ -940,7 +940,23 @@ def people_summary(months: int = 12, ship_from: str = "", ship_to: str = ""):
     by_person: dict = {}
     for r in trend:
         by_person.setdefault(r["person"], []).append({"month": r["month"], "deals": r["deals"], "revenue": r["revenue"]})
-    return {"period_months": months, "summary": rows, "by_month": by_person}
+    # ── динамика-ПО-ДНЯМ (для-чипов-Сегодня/Вчера/Неделя —- иначе-график-одна-точка) ──
+    by_day: dict = {}
+    if ship_from or ship_to:
+        drows = q(f"""
+            SELECT demand_responsible AS person,
+                   TO_CHAR(shipment_date, 'YYYY-MM-DD') AS day,
+                   COUNT(*)::int AS deals,
+                   COALESCE(SUM(sum), 0)::float8 AS revenue
+            FROM orders
+            WHERE shipment_date IS NOT NULL AND demand_responsible IS NOT NULL AND demand_responsible <> ''
+              AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+              {dsql}
+            GROUP BY 1, 2 ORDER BY 2, 1
+        """, tuple(dargs))
+        for r in drows:
+            by_day.setdefault(r["person"], []).append({"day": r["day"], "deals": r["deals"], "revenue": r["revenue"]})
+    return {"period_months": months, "summary": rows, "by_month": by_person, "by_day": by_day}
 
 
 @app.get("/api/people/monthly")
