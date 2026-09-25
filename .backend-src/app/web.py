@@ -135,7 +135,7 @@ def years():
 
 @app.get("/api/monthly")
 def monthly(months: int = 24):
-    months = max(1, min(60, months))
+    months = max(1, min(120, months))
     return q(f"""
         SELECT EXTRACT(year FROM order_date)::int AS year,
                EXTRACT(month FROM order_date)::int AS month,
@@ -482,7 +482,7 @@ def compare(period: str = "month", anchor: str = "", steps: int = 1):
 @app.get("/api/leadtime")
 def leadtime(months: int = 12):
     """Скорость исполнения: медиана дней заказ→shipment_date по месяцам + % отмен."""
-    months = max(1, min(60, months))
+    months = max(1, min(120, months))
     return q(f"""
         WITH done AS (
           SELECT date_trunc('month', order_date) AS m,
@@ -503,7 +503,7 @@ def leadtime(months: int = 12):
 @app.get("/api/cancel_rate")
 def cancel_rate(months: int = 12):
     """% отмен по месяцам (по дате заказа)."""
-    months = max(1, min(60, months))
+    months = max(1, min(120, months))
     return q(f"""
         SELECT to_char(date_trunc('month', order_date), 'YYYY-MM') AS label,
                COUNT(*)::int AS orders,
@@ -885,6 +885,29 @@ def TO_CHAR_TODAY() -> str:
 
 
 
+def _gran_for(months: int, ship_from: str, ship_to: str) -> str:
+    """Грануляр-графика-по-ДЛИНЕ-выбранного-периода: <=31-день → по-дням, <=200-дней → по-неделям, иначе-месяцы.
+    Без-дат-—-по-кол-ву-месяцев (месяц→день, до-полугода→неделя, дальше-месяц)."""
+    if ship_from and ship_to:
+        try:
+            _d = __import__("datetime").date
+            span = (_d.fromisoformat(ship_to) - _d.fromisoformat(ship_from)).days + 1
+            if 0 < span <= 31:
+                return "day"
+            if 0 < span <= 200:
+                return "week"
+            return "month"
+        except Exception:
+            pass
+    return "day" if months <= 1 else ("week" if months <= 6 else "month")
+
+
+def _window_clause(ship_from: str, months: int) -> str:
+    """SQL-окно-начала-периода: с-заданным-ship_from —- жёстко-от-него; без-—-скользящие-месяцы-от-сегодня."""
+    if ship_from:
+        return f"AND shipment_date >= '{ship_from}'::date"
+    return f"AND shipment_date >= (CURRENT_DATE - ({months} || ' months')::interval)"
+
 def _days_clause(ship_from: str, ship_to: str) -> "tuple[str, tuple]":
     """Условие-по-датам-отгрузки (для-чипов-Сегодня/Вчера/Неделя). Пустые-не-фильтруют."""
     if not ship_from and not ship_to:
@@ -901,8 +924,9 @@ def _days_clause(ship_from: str, ship_to: str) -> "tuple[str, tuple]":
 def people_summary(months: int = 12, ship_from: str = "", ship_to: str = ""):
     """Сводка-по-ответственным: продажи-= отгруженные-заказы (shipment_date-задан).
     Таблица-за-послед-N-месяцев + динамика-к-прошлому-году-в-тот-же-месяц."""
-    months = max(1, min(60, months))
+    months = max(1, min(120, months))
     dsql, dargs = _days_clause(ship_from, ship_to)
+    win = _window_clause(ship_from, months)
     rows = q(f"""
         WITH shipped AS (
             SELECT demand_responsible AS person,
@@ -912,7 +936,7 @@ def people_summary(months: int = 12, ship_from: str = "", ship_to: str = ""):
             FROM orders
             WHERE shipment_date IS NOT NULL AND demand_responsible IS NOT NULL AND demand_responsible <> ''
               AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
-              AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+              {win}
               {dsql}
             GROUP BY 1, 2
         )
@@ -924,7 +948,7 @@ def people_summary(months: int = 12, ship_from: str = "", ship_to: str = ""):
                MIN(m)::text                           AS first_month
         FROM shipped GROUP BY 1
         ORDER BY SUM(revenue) DESC
-    """, tuple([str(months)] + dargs))
+    """, tuple(dargs))
     # MoM-динамика-последнего-месяца-и-среднее-по-персоне-для-тренда:
     trend = q(f"""
         SELECT demand_responsible AS person,
@@ -934,10 +958,10 @@ def people_summary(months: int = 12, ship_from: str = "", ship_to: str = ""):
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible IS NOT NULL AND demand_responsible <> ''
           AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
-          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+          {win}
           {dsql}
         GROUP BY 1, 2 ORDER BY 2, 1
-    """, tuple([str(months)] + dargs))
+    """, tuple(dargs))
     by_person: dict = {}
     for r in trend:
         by_person.setdefault(r["person"], []).append({"month": r["month"], "deals": r["deals"], "revenue": r["revenue"]})
@@ -966,8 +990,9 @@ def people_monthly(person: str, months: int = 24, ship_from: str = "", ship_to: 
     Плюс-тот-же-месяц-прошлого-года (для-«год-к-году»).
     gran: месяц≤1 → ПО-ДНЯМ, ≤6 → ПО-НЕДЕЛЯМ (промежуточные-точки-графика), дальше → месяцы.
     monthly-всегда-помесячно (для-таблицы), series —- в-грануляре gran (для-графика)."""
-    months = max(1, min(60, months))
+    months = max(1, min(120, months))
     dsql, dargs = _days_clause(ship_from, ship_to)
+    win = _window_clause(ship_from, months)
     cur = q(f"""
         SELECT TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM') AS month,
                COUNT(*)::int AS deals,
@@ -976,29 +1001,34 @@ def people_monthly(person: str, months: int = 24, ship_from: str = "", ship_to: 
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = %s
           AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
-          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+          {win}
           {dsql}
         GROUP BY 1 ORDER BY 1
-    """, tuple([person, str(months)] + dargs))
+    """, tuple([person] + list(dargs)))
     # прошлый-год-в-то-же-месяц (за-вычетом-текущего-окна):
-    prev_year = q("""
+    _end_clause = (f"AND shipment_date < '{ship_to}'::date + interval '1 day'" if ship_to
+                   else "AND shipment_date < (CURRENT_DATE - (%s || ' months')::interval)")
+    _end_args = (person,) if ship_from else (person, str(months))
+    _win_sql = (f"AND shipment_date >= '{ship_from}'::date - interval '1 year'" if ship_from else "{win} - interval '1 year'")
+    prev_year = q(f"""
         SELECT TO_CHAR(date_trunc('month', shipment_date) - interval '1 year', 'YYYY-MM') AS pm,
                COUNT(*)::int AS deals, COALESCE(SUM(sum), 0)::float8 AS revenue,
                COALESCE(AVG(sum), 0)::float8 AS avg_check
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = %s
-          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval) - interval '1 year'
-          AND shipment_date < (CURRENT_DATE - (%s || ' months')::interval)
+          {_win_sql}
+          {f"AND shipment_date < '{ship_to}'::date" if ship_to else "AND shipment_date < (CURRENT_DATE - (%s || ' months')::interval)"}
         GROUP BY 1 ORDER BY 1
-    """, (person, str(months), str(months)))
-    # гранулярная-разбивка-для-ГРАФИКА: месяц→дни, квартал/полгода→недели, дальше→месяцы
-    gran = "day" if months <= 1 else ("week" if months <= 6 else "month")
+    """, _end_args if ship_from else (person, str(months), str(months)))
+    # гранулярная-разбивка-для-ГРАФИКА: по-длине-диапазона (или-по-кол-ву-месяцев)
+    gran = _gran_for(months, ship_from, ship_to)
     if gran == "day":
         bucket = "TO_CHAR(shipment_date, 'YYYY-MM-DD')"
     elif gran == "week":
         bucket = "TO_CHAR(date_trunc('week', shipment_date), 'YYYY-MM-DD')"  # ISO-неделя, старт-пн
     else:
         bucket = "TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM')"
+    extra_date = "AND shipment_date <= CURRENT_DATE" if gran != "month" else ""  # план-за-горизонтом-не-рисуем
     series = q(f"""
         SELECT {bucket} AS period,
                COUNT(*)::int AS deals,
@@ -1006,10 +1036,11 @@ def people_monthly(person: str, months: int = 24, ship_from: str = "", ship_to: 
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = %s
           AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
-          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+          {win}
+          {extra_date}
           {dsql}
         GROUP BY 1 ORDER BY 1
-    """, tuple([person, str(months)] + dargs))
+    """, tuple([person] + list(dargs)))
     return {"person": person, "months": months, "gran": gran, "series": series,
             "monthly": cur, "prev_year_same_month": (prev_year if gran == "month" else [])}
 
@@ -1018,12 +1049,13 @@ def people_monthly(person: str, months: int = 24, ship_from: str = "", ship_to: 
 def people_compare(people: str, months: int = 12, ship_from: str = "", ship_to: str = ""):
     """Сравнение-нескольких-людей (до-5). people=Иван;Мария;...
     грануляр-графика: месяц≤1 → ПО-ДНЯМ, ≤6 → ПО-НЕДЕЛЯМ, дальше → месяцы (поля-«month»-несут-период)."""
-    months = max(1, min(60, months))
+    months = max(1, min(120, months))
     dsql, dargs = _days_clause(ship_from, ship_to)
+    win = _window_clause(ship_from, months)
     persons = [p.strip() for p in (people or "").split(";") if p.strip()][:5]
     if not persons:
         return {"gran": "month", "months": [], "series": {}}
-    gran = "day" if months <= 1 else ("week" if months <= 6 else "month")
+    gran = _gran_for(months, ship_from, ship_to)
     if gran == "day":
         bucket = "TO_CHAR(shipment_date, 'YYYY-MM-DD')"
     elif gran == "week":
@@ -1039,11 +1071,11 @@ def people_compare(people: str, months: int = 12, ship_from: str = "", ship_to: 
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = ANY(%s)
           AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')  -- только-прошедшие-месяцы (сезон-уже-в-буд-есть-плановые-отгрузки)
-          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+          {win}
           {extra_date}
           {dsql}
         GROUP BY 1, 2 ORDER BY 2, 1
-    """, tuple([persons, str(months)] + dargs))
+    """, tuple([persons] + list(dargs)))
     series: dict = {}
     months_axis = sorted({r["month"] for r in rows})
     _today = __import__("datetime").date.today().strftime("%Y-%m" if gran == "month" else "%Y-%m-%d")
@@ -1062,10 +1094,10 @@ def people_compare(people: str, months: int = 12, ship_from: str = "", ship_to: 
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = ANY(%s)
           AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
-          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+          {win}
           {dsql}
         GROUP BY 1, 2 ORDER BY 2, 1
-    """, tuple([persons, str(months)] + dargs))
+    """, tuple([persons] + list(dargs)))
     ms_axis = sorted({r["month"] for r in mrows})
     ms_axis = [mth for mth in ms_axis if mth <= __import__("datetime").date.today().strftime("%Y-%m")]
     series_m: dict = {}

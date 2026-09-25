@@ -71,11 +71,62 @@ watch(persons, (ps) => {
 
 const dayFrom = ref(''); const dayTo = ref('')
 const presetDays = ref(false)
+// ── РУЧНОЙ-ФИЛЬТР:месяц / год / произвольный-диапазон (mode-—-кто-в-С-И-Л-Е) ──
+const fmMode = ref<'preset' | 'month' | 'year' | 'custom'>('preset')
+const fmMonth = ref('')   // 'YYYY-MM'
+const fmYear = ref('')    // 'YYYY'
+const cuFrom = ref(''); const cuTo = ref('')  // свободный-диапазон
+const YEARS = (() => { const y0 = 2019, y1 = new Date().getFullYear(); return Array.from({ length: y1 - y0 + 1 }, (_, i) => y1 - i) })()
+const MONTHS_ALL = (() => { // последние-84-месяца (7-лет)-дл-я-се-л-Е-К-Т-А-—-свежие-в-К-О-Н-Ц-Е-(
+  const arr: string[] = []; const n = new Date()
+  for (let i = 0; i < 84; i++) { const d = new Date(n.getFullYear(), n.getMonth() - i, 1); arr.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`) }
+  return arr
+})()
+const MON_RU = ['', 'январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь']
+const monthLabel = (ym: string) => { const [y, m] = ym.split('-'); return `${MON_RU[+m]} ${y}` }
+// применение-выбранного-режима:пишет-в-dayFrom/dayTo-и-Е-ДИ-Н-СТ-В-Е-Н-Н-Ы-Й-источник-правды-фильтра
+function applyMonthFilter() {
+  if (!fmMonth.value) { dayFrom.value = ''; dayTo.value = ''; presetDays.value = false; return }
+  const [y, m] = fmMonth.value.split('-').map(Number)
+  const last = new Date(+y, +m, 0).getDate() // последний-день-месяца
+  const now = new Date()
+  const end = (y === now.getFullYear() && +m === now.getMonth() + 1) ? isoD(now) : `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`
+  dayFrom.value = `${y}-${String(m).padStart(2, '0')}-01`; dayTo.value = end
+  presetDays.value = true
+}
+function applyYear() {
+  if (!fmYear.value) { dayFrom.value = ''; dayTo.value = ''; presetDays.value = false; return }
+  const y = fmYear.value; const n = new Date()
+  dayFrom.value = (y === String(n.getFullYear())) ? (new Date(n.getFullYear(), n.getMonth(), 1).toISOString().slice(0, 10)) : `${y}-01-01`
+  dayTo.value = isoD(new Date()) // по-сегодня
+  presetDays.value = true
+}
+function applyCustom() {
+  if (!cuFrom.value && !cuTo.value) { presetDays.value = false; return }
+  presetDays.value = true
+}
+// смена-режима-гасит-чужие-активности-—-пресеты-сегодня/вчера/неделя-остаются-в-fmMode=preset
+function setMode(m: 'preset' | 'month' | 'year' | 'custom') {
+  fmMode.value = m
+  if (m === 'month' && fmMonth.value) applyMonthFilter()
+  else if (m === 'year' && fmYear.value) applyYear()
+  else if (m === 'custom') { /* ждём-даты-из-инпутов — применит watch ниже */
+    if (!cuFrom.value && !cuTo.value) { dayFrom.value = ''; dayTo.value = ''; presetDays.value = false }
+  } else if (m === 'preset') { dayFrom.value = ''; dayTo.value = ''; presetDays.value = false }
+}
+// кастомный-диапазон:применяется-на-лету-когда-оба-поля-заполнены
+watch([cuFrom, cuTo], () => {
+  if (fmMode.value !== 'custom') return
+  if (cuFrom.value && cuTo.value) { dayFrom.value = cuFrom.value; dayTo.value = cuTo.value; presetDays.value = true }
+})
+// месячный/год-селекты-тоже-на-лету:
+watch(fmMonth, () => { if (fmMode.value === 'month' && fmMonth.value) applyMonthFilter() })
+watch(fmYear, () => { if (fmMode.value === 'year' && fmYear.value) applyYear() })
 function isoD(d: Date) { return d.toISOString().slice(0, 10) }
 const todayChip = () => { dayFrom.value = dayTo.value = isoD(new Date()); presetDays.value = true }
 const yestChip = () => { const d = new Date(); d.setDate(d.getDate() - 1); dayFrom.value = dayTo.value = isoD(d); presetDays.value = true }
 const weekChip = () => { const a = new Date(); const b = new Date(); a.setDate(a.getDate() - 6); dayFrom.value = isoD(a); dayTo.value = isoD(b); presetDays.value = true }
-// клик-по-человеку:面板-появляется-в-DOM-ПОЗЖЕ-данных —- грузим-деталку-ЯВНО (даже-если-человек-тот-же):
+// клик-по-человеку: панель-появляется-в-DOM-ПОЗЖЕ-данных — грузим-деталку-ЯВНО (даже-если-человек-тот-же)
 function pickPerson(p: string) {
   const changed = selected.value !== p
   selected.value = p
@@ -332,7 +383,6 @@ const PERIODS: PChip[] = [
 const pChip = ref(12) // активный-период-в-месяцах
 watch(pChip, (v) => { months.value = v })
 
-// ── быстрые-ДНИ/НЕДЕЛЯ (сегодня/вчера/неделя —- по-датам-отгрузки) ──
 </script>
 
 <template>
@@ -346,7 +396,23 @@ watch(pChip, (v) => { months.value = v })
         <button class="chip" :class="{ on: presetDays && (() => { const d = new Date(); d.setDate(d.getDate() - 1); return dayFrom === isoD(d) })() }" @click="yestChip">Вчера</button>
         <button class="chip" :class="{ on: presetDays && (() => { const a = new Date(); a.setDate(a.getDate() - 6); return dayFrom === isoD(a) && dayTo === isoD(new Date()) })() }" @click="weekChip">Неделя</button>
         <span class="chip-sep">·</span>
-        <button v-for="p in PERIODS" :key="p.months" class="chip" :class="{ on: !presetDays && months === p.months }" @click="months = p.months; presetDays = false; dayFrom = ''; dayTo = ''">{{ p.label }}</button>
+        <button v-for="p in PERIODS" :key="p.months" class="chip" :class="{ on: fmMode === 'preset' && !presetDays && months === p.months }" @click="months = p.months; presetDays = false; fmMode = 'preset'; dayFrom = ''; dayTo = ''">{{ p.label }}</button>
+        <span class="chip-sep">·</span>
+        <select v-if="fmMode === 'month'" v-model="fmMonth" class="qf-select" @change="applyMonthFilter">
+          <option value="">— месяц —</option>
+          <option v-for="ym in MONTHS_ALL" :key="ym" :value="ym">{{ monthLabel(ym) }}</option>
+        </select>
+        <select v-if="fmMode === 'year'" v-model="fmYear" class="qf-select">
+          <option value="">— год —</option>
+          <option v-for="y in YEARS" :key="y" :value="String(y)">{{ y }}</option>
+        </select>
+        <template v-if="fmMode === 'custom'">
+          <input type="date" v-model="cuFrom" class="qf-date" />
+          <span class="chip-sep">→</span>
+          <input type="date" v-model="cuTo" class="qf-date" />
+        </template>
+        <button v-if="fmMode === 'custom' && cuFrom && cuTo" class="chip" @click="dayFrom = cuFrom; dayTo = cuTo; presetDays = true">✓</button>
+        <button class="chip chip-ghosty" @click="fmMode = (fmMode === 'preset' ? 'month' : (fmMode === 'month' ? 'year' : (fmMode === 'year' ? 'custom' : 'preset')))" :title="fmMode === 'preset' ? 'Вручную: месяц/год/свой-диапазон' : 'Сменить-вид-ручного-фильтра'">{{ fmMode === 'preset' ? '+ вручную' : (fmMode === 'month' ? 'месяц:' : (fmMode === 'year' ? 'год:' : 'с_dates:')) }}</button>
       </div>
     </div>
     <div class="chart-box" style="height: 300px"><canvas ref="cTop"></canvas></div>
@@ -419,6 +485,9 @@ watch(pChip, (v) => { months.value = v })
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
 .chip-sep { color: var(--muted); padding: 0 2px; }
+.qf-select, .qf-date { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 10px; font-size: 12.5px; }
+.qf-select:focus, .qf-date:focus { outline: none; border-color: var(--accent); }
+.chip-ghosty { opacity: .85; }
 .cmp-pick { display: flex; gap: 5px; flex-wrap: wrap; }
 .cmp-pick .chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; }
 .cmp-pick .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
