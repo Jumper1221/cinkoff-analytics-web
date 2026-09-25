@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, type Ref } from 'vue'
 import { useApi, fmtInt, fmtMln, fmtMoney, moneyAuto } from '../api/client'
 import { useChart, chartColors } from '../api/useChart'
 
@@ -122,6 +122,54 @@ watch([cuFrom, cuTo], () => {
 // месячный/год-селекты-тоже-на-лету:
 watch(fmMonth, () => { if (fmMode.value === 'month' && fmMonth.value) applyMonthFilter() })
 watch(fmYear, () => { if (fmMode.value === 'year' && fmYear.value) applyYear() })
+
+// ── ПОПОВЕР-ПЕРИОДА (кнопка-📅-с-тек-У-Щ-И-М-диапазоном; внутри-месяц/год/свои-даты) ──
+const popOpen = ref(false)
+function togglePop() { popOpen.value = !popOpen.value }
+function closePop() { popOpen.value = false }
+// клик-вне-и-Escape-закрывают-поповер-(-са-М-О-ве-Б-станд-А-Р-Т-Н-О-Е-пов-Е-Д-Е-Н-И-Е-д-А-Т-П-И-К-К-Е-Р-О-В-(
+function onDocClick(e: MouseEvent) {
+  const t = e.target as HTMLElement
+  if (!t.closest('.period-pop') && !t.closest('.btn-range')) popOpen.value = false
+}
+function onKey(e: KeyboardEvent) { if (e.key === 'Escape') popOpen.value = false }
+onMounted(() => { document.addEventListener('click', onDocClick); document.addEventListener('keydown', onKey) })
+onUnmounted(() => { document.removeEventListener('click', onDocClick); document.removeEventListener('keydown', onKey) })
+
+function applyCustomRange() {
+  if (!cuFrom.value || !cuTo.value) return
+  dayFrom.value = cuFrom.value
+  dayTo.value = cuTo.value
+  presetDays.value = true
+  fmMode.value = 'custom'
+  popOpen.value = false
+}
+function pickMonth(ym: string) { fmMode.value = 'month'; fmMonth.value = ym; applyMonthFilter(); popOpen.value = false }
+function pickYear(yv: string) { fmMode.value = 'year'; fmYear.value = yv; applyYear(); popOpen.value = false }
+// активен-ли-«ручной»-режим (для-подсветки-кнопки-📅 и-гашения-пресетных-чипов):
+const manualActive = computed(() => (fmMode.value !== 'preset' || presetDays.value) && !!dayFrom.value)
+// человеко-понятный-лейбл-тек-У-Щ-Е-ГО-диапазона-(-са-М-О-ве-Б-в-К-Н-О-П-К-Е-📅-(
+const dd = (iso: string) => (iso ? iso.slice(8) + '.' + iso.slice(5, 7) + '.' + iso.slice(2, 4) : '—')  // 25.09.26
+const rangeLabel = computed(() => {
+  if (fmMode.value === 'month' && fmMonth.value) return monthLabel(fmMonth.value)
+  if (fmMode.value === 'year' && fmYear.value) return fmYear.value + ' год'
+  if (dayFrom.value && dayTo.value) return (dayFrom.value === dayTo.value ? dd(dayFrom.value) : dd(dayFrom.value) + ' → ' + dd(dayTo.value))
+  return '12 мес' // скользящий-Год-по-ум-О-Л-Ч-А-Н-И-Ю
+})
+// сброс-в-деф-О-Л-Т-(-са-М-О-ве-Б-скользящий-Год-(
+function resetRange() {
+  fmMode.value = 'preset'; presetDays.value = false
+  dayFrom.value = ''; dayTo.value = ''; cuFrom.value = ''; cuTo.value = ''
+  fmMonth.value = ''; fmYear.value = ''
+  months.value = 12
+  popOpen.value = false
+}
+// год-назад-для-дефолта-лейбла-когда-нет-дат-(-са-М-О-ве-Б-подсказка-(
+const slideHint = computed(() => {
+  if (dayFrom.value || fmMode.value !== 'preset' || presetDays.value) return ''
+  const a = new Date(); a.setMonth(a.getMonth() - 12); a.setDate(a.getDate() + 1)
+  return '25.09.25 → 25.09.26-подобное-скользящее-окно'
+})
 function isoD(d: Date) { return d.toISOString().slice(0, 10) }
 const todayChip = () => { dayFrom.value = dayTo.value = isoD(new Date()); presetDays.value = true }
 const yestChip = () => { const d = new Date(); d.setDate(d.getDate() - 1); dayFrom.value = dayTo.value = isoD(d); presetDays.value = true }
@@ -392,27 +440,44 @@ watch(pChip, (v) => { months.value = v })
     <div class="hdr-row">
       <h3>Выручка по ответственным (отгруженные заказы)</h3>
       <div class="qf-group">
-        <button class="chip" :class="{ on: presetDays && dayFrom === isoD(new Date()) }" @click="todayChip">Сегодня</button>
-        <button class="chip" :class="{ on: presetDays && (() => { const d = new Date(); d.setDate(d.getDate() - 1); return dayFrom === isoD(d) })() }" @click="yestChip">Вчера</button>
-        <button class="chip" :class="{ on: presetDays && (() => { const a = new Date(); a.setDate(a.getDate() - 6); return dayFrom === isoD(a) && dayTo === isoD(new Date()) })() }" @click="weekChip">Неделя</button>
-        <span class="chip-sep">·</span>
-        <button v-for="p in PERIODS" :key="p.months" class="chip" :class="{ on: fmMode === 'preset' && !presetDays && months === p.months }" @click="months = p.months; presetDays = false; fmMode = 'preset'; dayFrom = ''; dayTo = ''">{{ p.label }}</button>
-        <span class="chip-sep">·</span>
-        <select v-if="fmMode === 'month'" v-model="fmMonth" class="qf-select" @change="applyMonthFilter">
-          <option value="">— месяц —</option>
-          <option v-for="ym in MONTHS_ALL" :key="ym" :value="ym">{{ monthLabel(ym) }}</option>
-        </select>
-        <select v-if="fmMode === 'year'" v-model="fmYear" class="qf-select">
-          <option value="">— год —</option>
-          <option v-for="y in YEARS" :key="y" :value="String(y)">{{ y }}</option>
-        </select>
-        <template v-if="fmMode === 'custom'">
-          <input type="date" v-model="cuFrom" class="qf-date" />
-          <span class="chip-sep">→</span>
-          <input type="date" v-model="cuTo" class="qf-date" />
-        </template>
-        <button v-if="fmMode === 'custom' && cuFrom && cuTo" class="chip" @click="dayFrom = cuFrom; dayTo = cuTo; presetDays = true">✓</button>
-        <button class="chip chip-ghosty" @click="fmMode = (fmMode === 'preset' ? 'month' : (fmMode === 'month' ? 'year' : (fmMode === 'year' ? 'custom' : 'preset')))" :title="fmMode === 'preset' ? 'Вручную: месяц/год/свой-диапазон' : 'Сменить-вид-ручного-фильтра'">{{ fmMode === 'preset' ? '+ вручную' : (fmMode === 'month' ? 'месяц:' : (fmMode === 'year' ? 'год:' : 'с_dates:')) }}</button>
+        <div class="seg">
+          <button class="seg-btn" :class="{ on: presetDays && dayFrom === isoD(new Date()) && dayTo === isoD(new Date()) }" @click="todayChip">Сегодня</button>
+          <button class="seg-btn" :class="{ on: presetDays && (() => { const d = new Date(); d.setDate(d.getDate() - 1); return dayFrom === isoD(d) && dayTo === isoD(d) })() }" @click="yestChip">Вчера</button>
+          <button class="seg-btn" :class="{ on: presetDays && (() => { const a = new Date(); a.setDate(a.getDate() - 6); return dayFrom === isoD(a) && dayTo === isoD(new Date()) })() }" @click="weekChip">Неделя</button>
+        </div>
+        <button class="btn-range" :class="{ act: manualActive }" @click.stop="togglePop" :title="slideHint || 'Изменить период'">
+          📅 {{ rangeLabel }} <span class="caret">▾</span>
+        </button>
+        <button v-if="manualActive" class="x-reset" @click="resetRange" title="Сбросить-на-скользящий-год">✕</button>
+
+        <div v-if="popOpen" class="period-pop" @click.stop>
+          <div class="pop-col">
+            <div class="pop-h">Месяц</div>
+            <select class="pop-sel" :value="fmMonth" @change="pickMonth(($event.target as HTMLSelectElement).value)">
+              <option value="">выбрать…</option>
+              <option v-for="ym in MONTHS_ALL" :key="ym" :value="ym">{{ monthLabel(ym) }}</option>
+            </select>
+            <div class="pop-hint" v-if="!fmMonth">месяц-целиком; текущий-—-по-сегодня</div>
+          </div>
+          <div class="pop-sep"></div>
+          <div class="pop-col">
+            <div class="pop-h3">Год</div>
+            <div class="pop-years">
+              <button v-for="y in YEARS" :key="y" class="yr" :class="{ on: fmYear === String(y) && fmMode === 'year' }" @click="pickYear(String(y))">{{ y }}</button>
+            </div>
+            <div class="pop-hint" v-if="fmMode === 'year' && fmYear">с-1-января-по-сегодня</div>
+          </div>
+          <div class="pop-sep"></div>
+          <div class="pop-col">
+            <div class="pop-h3">Свой-диапазон</div>
+            <div class="pop-dates">
+              <input type="date" v-model="cuFrom" class="qf-date" />
+              <span class="arr">→</span>
+              <input type="date" v-model="cuTo" class="qf-date" />
+            </div>
+            <button class="pop-apply" :disabled="!cuFrom || !cuTo" @click="applyCustomRange">Показать-за-период</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="chart-box" style="height: 300px"><canvas ref="cTop"></canvas></div>
@@ -478,7 +543,31 @@ watch(pChip, (v) => { months.value = v })
 
 <style scoped>
 .hdr-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.qf-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.qf-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; position: relative; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg-btn { border: 0; background: transparent; color: var(--text); padding: 6px 14px; font-size: 13px; cursor: pointer; border-right: 1px solid var(--line); }
+.seg-btn:last-child { border-right: 0; }
+.seg-btn:hover { background: rgba(59,130,246,.08); }
+.seg-btn.on { background: var(--accent); color: #fff; font-weight: 600; }
+.btn-range { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.btn-range.act { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.btn-range .caret { opacity: .55; font-size: 10px; }
+.x-reset { border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 50%; width: 26px; height: 26px; cursor: pointer; line-height: 1; }
+.x-reset:hover { color: var(--err); border-color: var(--err); }
+.period-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: flex; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.14); padding: 14px; min-width: 560px; }
+.pop-col { padding: 0 14px; min-width: 150px; display: flex; flex-direction: column; gap: 8px; }
+.pop-col:first-child { padding-left: 0; }
+.pop-sep { width: 1px; background: var(--line); }
+.pop-h { font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+.pop-sel { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.pop-years { display: flex; flex-wrap: wrap; gap: 5px; max-width: 190px; }
+.yr { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
+.yr.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pop-hint { font-size: 11px; color: var(--muted); }
+.pop-dates { display: flex; gap: 6px; align-items: center; }
+.pop-dates .arr { color: var(--muted); }
+.pop-apply { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+.pop-apply:disabled { opacity: .45; cursor: default; }
 .chip { border: 1px solid var(--line); background: var(--panel); color: var(--text);
   border-radius: 999px; padding: 5px 13px; font-size: 13px; cursor: pointer; transition: all .12s; }
 .chip:hover { border-color: var(--accent); }
