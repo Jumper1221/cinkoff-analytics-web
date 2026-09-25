@@ -50,9 +50,12 @@ const cmpApi = useApi<CompareResp>(() => (cmpMode.value && cmpPeople.value.lengt
 interface CompareRespX { months: string[]; series: Record<string, MonthDeal[]> }
 interface MonthDeal { month: string; deals: number; revenue: number }
 
+// ВАЖНО: dep-графиков-должен-покрывать-ВСЁ,-что-читает-функция-рисования:
+// в-дневном-режиме-графики-2/3-рисуются-из-sum.data.by_day (+презеты-дней) —- раньше-dep-их-не-включал,
+// и-порядок-прихода-ответов (sum-раньше-cmpApi-или-наоборот)-решал,-перерисуется-ли-график-—-«жил-своей-жизнью».
 const dep = computed(() => [sum.data.value, months.value] as unknown)
-const depD = computed(() => [detail.data.value, selected.value, months.value] as unknown)
-const depC = computed(() => [cmpApi.data.value, cmpPeople.value] as unknown)
+const depD = computed(() => [detail.data.value, selected.value, months.value, sum.data.value, presetDays.value, dayFrom.value, dayTo.value] as unknown)
+const depC = computed(() => [cmpApi.data.value, cmpPeople.value, sum.data.value, presetDays.value, dayFrom.value, dayTo.value] as unknown)
 
 const persons = computed(() => (sum.data.value?.summary ?? []).map((s: any) => s.person))
 watch(persons, (ps) => {
