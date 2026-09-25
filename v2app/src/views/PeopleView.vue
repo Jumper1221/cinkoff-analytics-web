@@ -45,6 +45,15 @@ watch(persons, (ps) => {
   }
 })
 
+// ── ПЕРЕЗАГРУЗКИ (useApi-здесь-без-авто-watch —- вызываем-вручную) ──
+watch(months, () => {
+  sum.load()
+  if (selected.value && !cmpMode.value) detail.load()
+  if (cmpMode.value && cmpPeople.value.length) cmpApi.load()
+})
+watch(selected, (v) => { if (v && !cmpMode.value) detail.load() })
+watch([cmpPeople, cmpMode], () => { if (cmpMode.value && cmpPeople.value.length) cmpApi.load() })
+
 function shortName(full: string): string {
   const p = (full || '').split(' ')
   return p.length >= 3 ? `${p[0]} ${p[1][0]}.${p[2][0]}.` : (full || '—')
@@ -87,7 +96,7 @@ const { canvas: cPerson } = useChart(() => {
   } as any
 }, depD as Ref<unknown>)
 
-// ── график-3: сравнение-людей ──
+// ── график-3: сравнение-людей (dep-от-cmpApi, а-не-от-sum!) ──
 const cmpPalette = ['#3b82f6', '#16a34a', '#f59e0b', '#a855f7', '#ef4444']
 const { canvas: cCmp } = useChart(() => {
   const d = cmpApi.data.value as CompareResp | null
@@ -98,13 +107,13 @@ const { canvas: cCmp } = useChart(() => {
   return {
     type: 'line',
     data: { labels: d.months,
-      datasets: people.map((p, i) => ({ label: shortName(p), data: (d.series[p] || []).map(x => +(x.revenue / 1e6).toFixed(2)), borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0.3, pointRadius: 2, fill: i === 0 ? false : false })) },
+      datasets: people.map((p, i) => ({ label: shortName(p), data: (d.series[p] || []).map(x => +(x.revenue / 1e6).toFixed(2)), borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0.3, pointRadius: 2, fill: false })) },
     options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
       scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
                 x: { ticks: { color: C.muted, maxTicksLimit: 12 }, grid: { display: false } } },
       plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
   } as any
-}, dep as unknown as Ref<unknown>)
+}, depC as unknown as Ref<unknown>)
 
 // сравнение-таблица: последний-месяц-vs-предыдущий-и-год-к-году
 const cmpTable = computed(() => {

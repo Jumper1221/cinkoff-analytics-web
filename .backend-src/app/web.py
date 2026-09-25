@@ -904,7 +904,7 @@ def people_summary(months: int = 12):
     # MoM-динамика-последнего-месяца-и-среднее-по-персоне-для-тренда:
     trend = q("""
         SELECT demand_responsible AS person,
-               date_trunc('month', shipment_date)::text AS month,
+               TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM') AS month,
                COUNT(*)::int AS deals,
                COALESCE(SUM(sum), 0)::float8 AS revenue
         FROM orders
@@ -914,7 +914,7 @@ def people_summary(months: int = 12):
     """, (str(months),))
     by_person: dict = {}
     for r in trend:
-        by_person.setdefault(r["person"], []).append({"month": r["month"][:7], "deals": r["deals"], "revenue": r["revenue"]})
+        by_person.setdefault(r["person"], []).append({"month": r["month"], "deals": r["deals"], "revenue": r["revenue"]})
     return {"period_months": months, "summary": rows, "by_month": by_person}
 
 
@@ -924,7 +924,7 @@ def people_monthly(person: str, months: int = 24):
     Плюс-тот-же-месяц-прошлого-года (для-«год-к-году»)."""
     months = max(3, min(60, months))
     cur = q("""
-        SELECT date_trunc('month', shipment_date)::text AS month,
+        SELECT TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM') AS month,
                COUNT(*)::int AS deals,
                COALESCE(SUM(sum), 0)::float8 AS revenue,
                COALESCE(AVG(sum), 0)::float8 AS avg_check
@@ -935,7 +935,7 @@ def people_monthly(person: str, months: int = 24):
     """, (person, str(months)))
     # прошлый-год-в-то-же-месяц (за-вычетом-текущего-окна):
     prev_year = q("""
-        SELECT date_trunc('month', shipment_date - interval '1 year')::text AS pm,
+        SELECT TO_CHAR(date_trunc('month', shipment_date) - interval '1 year', 'YYYY-MM') AS pm,
                COUNT(*)::int AS deals, COALESCE(SUM(sum), 0)::float8 AS revenue,
                COALESCE(AVG(sum), 0)::float8 AS avg_check
         FROM orders
@@ -956,7 +956,7 @@ def people_compare(people: str, months: int = 12):
         return {"persons": [], "series": {}}
     rows = q("""
         SELECT demand_responsible AS person,
-               date_trunc('month', shipment_date)::text AS month,
+               TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM') AS month,
                COUNT(*)::int AS deals,
                COALESCE(SUM(sum), 0)::float8 AS revenue
         FROM orders
@@ -968,9 +968,9 @@ def people_compare(people: str, months: int = 12):
     months_axis = sorted({r["month"] for r in rows})
     for p_ in persons:
         m = {r["month"]: r for r in rows if r["person"] == p_}
-        series[p_] = [{"month": mth[:7], "deals": m.get(mth, {}).get("deals", 0),
+        series[p_] = [{"month": mth, "deals": m.get(mth, {}).get("deals", 0),
                        "revenue": m.get(mth, {}).get("revenue", 0)} for mth in months_axis]
-    return {"months": [mth[:7] for mth in months_axis], "series": series}
+    return {"months": months_axis, "series": series}
 
 
 @app.get("/healthz")
