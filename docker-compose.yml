@@ -27,6 +27,11 @@ services:
       PG_DB: orders
       PG_USER: orders
       PG_PASSWORD: ${PG_PASSWORD:-orders_password_change_me}
+    # Синк-заказов-по-кнопке: ключ-API-и-диск-сырья-должны-жить-в-одном-месте-с-кроном.
+    # .env-копируется-БЕЗ-секретов-в-git (см-.gitignore: data/ и-.env-вне-репо).
+    volumes:
+      - ../cinkoff_parser/.env:/.env:ro                # API_KEY-для-синка (config-ищет-/.env-т.к. файл-в-/app/web.py)
+      - ../cinkoff_parser/data:/data                   # сырьё-→-общий-диск (SNAP_ROOT=/data/snapshots-в-контейнере)
     command: ["python", "-u", "web.py"]
     restart: unless-stopped
     networks:

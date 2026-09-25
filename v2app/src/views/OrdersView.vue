@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useApi, fmtInt, fmtMoney, fmtDate } from '../api/client'
 import { useUiStore } from '../stores/ui'
 import type { OrderRow, OrdersPage } from '../api/types'
@@ -87,6 +87,54 @@ async function openOrder(id: number) {
   await dossier.load()
 }
 function closeOrder() { sel.value = null }
+
+// ── «Обновить-данные»: фронт-→-POST /api/sync →-пул-статуса →-перезагрузка-таблицы ──
+const syncRunning = ref(false)
+const syncMsg = ref('')
+const dataAsOf = ref('')
+let syncTimer: number | undefined
+
+function fmtAsOf(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso.replace(' ', 'T'))
+  return isNaN(+d) ? iso : d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+async function pollSync() {
+  try {
+    const r = await fetch('/api/sync/status')
+    const d = await r.json()
+    if (d.data_as_of) dataAsOf.value = fmtAsOf(d.data_as_of)
+    if (d.running) return                      // всё-ещё-идёт —- продолжаем-опрос
+    if (syncTimer) { clearInterval(syncTimer); syncTimer = undefined }
+    syncRunning.value = false
+    if (d.ok === true) {
+      syncMsg.value = d.result?.skipped ? String(d.result.skipped) : 'Данные обновлены'
+      orders.load()                            // ← перечитываем-таблицу-свежими
+    } else if (d.ok === false) {
+      syncMsg.value = 'Ошибка: ' + (d.error || 'синк-не-завершился')
+    }
+    if (syncMsg.value) setTimeout(() => { syncMsg.value = '' }, 8000)
+  } catch { /* сеть-молчит —- попробуем-на-след-тике */ }
+}
+
+async function startSync() {
+  if (syncRunning.value) return
+  syncRunning.value = true; syncMsg.value = ''
+  try {
+    const r = await fetch('/api/sync', { method: 'POST' })
+    if (r.status === 409) { /* уже-идёт (напр.-крон) —- просто-продолжаем-ждать */ }
+    else if (!r.ok) throw new Error('POST /api/sync → ' + r.status)
+    syncTimer = window.setInterval(pollSync, 2500)
+    pollSync()
+  } catch (e: any) {
+    syncRunning.value = false; syncMsg.value = 'Не-удалось-запустить-обновление'
+  }
+}
+onMounted(async () => {
+  try { const d = await (await fetch('/api/sync/status')).json(); if (d.data_as_of) dataAsOf.value = fmtAsOf(d.data_as_of) } catch {}
+})
+onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
 </script>
 
 <template>
@@ -103,6 +151,13 @@ function closeOrder() { sel.value = null }
 
     <!-- строка 2: точные фильтры -->
     <div class="filters2">
+      <button class="btn-sync" :class="{ busy: syncRunning }" :disabled="syncRunning" @click="startSync"
+              :title="syncRunning ? 'Идёт-загрузка-данных-с-сервера-поставщика…' : 'Загрузить-свежие-заказы-с-сервера-поставщика'">
+        <span v-if="!syncRunning">⟳ Обновить</span>
+        <span v-else>⏳ Обновляется…</span>
+      </button>
+      <span v-if="syncMsg" class="sync-msg" :class="{ ok: syncMsg.startsWith('Д') || syncMsg.includes('крон') }">{{ syncMsg }}</span>
+      <span v-else-if="dataAsOf" class="data-asof" :title="'Момент-последнего-обновления-данных'">данные-на {{ dataAsOf }}</span>
       <input v-model="q" class="f-search2" placeholder="🔍 номер / контрагент…" />
       <select v-model="status" class="f-select">
         <option value="">Все статусы</option>
