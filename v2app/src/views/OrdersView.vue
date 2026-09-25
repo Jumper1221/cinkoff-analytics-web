@@ -58,6 +58,22 @@ const csvUrl = computed(() => {
   return `/api/export/orders.csv?${p.toString()}`
 })
 
+
+/* ── страницы-с-многоточиями ── */
+function pagesToShow(): (number | '...')[] {
+  const T = totalPages.value, C = page.value
+  if (T <= 7) return Array.from({length: T}, (_, i) => i + 1)
+  const w = new Set<number>([1, 2, T - 1, T, C - 1, C, C + 1])
+  const arr = [...w].filter(n => n >= 1 && n <= T).sort((a, b) => a - b)
+  const out: (number | '...')[] = []
+  let prev = 0
+  for (const n of arr) {
+    if (prev && n - prev > 1) out.push('...')
+    out.push(n); prev = n
+  }
+  return out
+}
+
 const totalShown = computed(() => orders.data.value?.total ?? 0)
 function clearAll() { q.value = ''; status.value = ''; fromDate.value = ''; toDate.value = '' }
 const hasFilter = computed(() => !!(q.value || status.value || fromDate.value || toDate.value))
@@ -121,9 +137,15 @@ function closeOrder() { sel.value = null }
         </tbody>
       </table>
       <div class="pager">
-        <button :disabled="page <= 1" @click="page--">←</button>
-        <span>стр. {{ page }} из {{ totalPages }} · всего {{ fmtInt(orders.data.value?.total ?? 0) }}</span>
-        <button :disabled="page >= totalPages" @click="page++">→</button>
+        <button :disabled="page <= 1" @click="page = 1" title="В начало">«</button>
+        <button :disabled="page <= 1" @click="page--" title="Назад">←</button>
+        <template v-for="(p, i) in pagesToShow()" :key="i">
+          <span v-if="p === '...'" class="pg-dots">…</span>
+          <button v-else :class="{ cur: p === page }" @click="page = p">{{ p }}</button>
+        </template>
+        <button :disabled="page >= totalPages" @click="page++" title="Вперёд">→</button>
+        <button :disabled="page >= totalPages" @click="page = totalPages" title="В конец">»</button>
+        <span class="pg-info">{{ fmtInt(orders.data.value?.total ?? 0) }} заказов</span>
       </div>
     </template>
   </div>

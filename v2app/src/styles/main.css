@@ -85,7 +85,6 @@ tr.click:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); 
 .anchor { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px 8px; }
 .ellipsis { max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .up { color: var(--ok); } .down { color: var(--err); }
-tr.click { cursor: pointer; }
 
 .hits { margin-top: 10px; }
 .hit { padding: 7px 10px; border-bottom: 1px solid var(--line); }
@@ -109,6 +108,21 @@ tr.click { cursor: pointer; }
 .hm-ylab.cur { color: var(--accent); }
 .chart-box.tall { height: 420px; }
 
+/* ── пагинация (Orders и все списки) ── */
+.pager { display: flex; align-items: center; justify-content: center; gap: 4px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pager .pg-info { color: var(--muted); font-size: 12.5px; margin: 0 10px; white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.pager button { min-width: 34px; height: 32px; padding: 0 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); border-radius: 8px; cursor: pointer;
+  font-size: 13.5px; font-variant-numeric: tabular-nums; transition: all .12s; }
+.pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.pager button:disabled { opacity: .35; cursor: default; }
+.pager button.cur { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.pager .pg-dots { color: var(--muted); padding: 0 2px; }
+@media (max-width: 640px) {
+  .pager { flex-wrap: wrap; gap: 6px; }
+}
 /* ── R3: скелетоны, empty-state, тултипы ── */
 .skel { position: relative; overflow: hidden; background: color-mix(in srgb, var(--muted) 18%, transparent); border-radius: 6px; }
 .skel::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%);
