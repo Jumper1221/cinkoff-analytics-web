@@ -20,15 +20,30 @@ interface MonthResp {
 }
 interface CompareResp { months: string[]; series: Record<string, { month: string; deals: number; revenue: number }[]> }
 
-const sum = useApi<any>(() => `/api/people/summary?months=${months.value}`)
-const detail = useApi<MonthRespExtra>(() => (selected.value ? `/api/people/monthly?person=${encodeURIComponent(selected.value)}&months=${months.value}` : ''), false)
+const qsSum = computed(() => {
+  const p = new URLSearchParams({ months: String(months.value) })
+  if (dayFrom.value) p.set('ship_from', dayFrom.value)
+  if (dayTo.value) p.set('ship_to', dayTo.value)
+  return `/api/people/summary?${p.toString()}`
+})
+const sum = useApi<any>(() => qsSum.value)
+const detail = useApi<MonthRespExtra>(() => (selected.value ? (() => {
+  const p = new URLSearchParams({ person: selected.value, months: String(months.value) })
+  if (dayFrom.value) p.set('ship_from', dayFrom.value)
+  if (dayTo.value) p.set('ship_to', dayTo.value)
+  return `/api/people/monthly?${p.toString()}`
+})() : ''), false)
 type MonthRespExtra = MonthResp
 interface MonthResp { person: string; months: number; monthly: MonthRow[]; prev_year_same_month: PYRow[] }
 interface MonthRow { month: string; deals: number; revenue: number; avg_check: number }
 interface PYRow { pm: string; deals: number; revenue: number; avg_check: number }
 
-const cmpApi = useApi<CompareResp>(() => (cmpMode.value && cmpPeople.value.length >= 1
-  ? `/api/people/compare?people=${cmpPeople.value.map(encodeURIComponent).join(';')}&months=${months.value}` : ''), false)
+const cmpApi = useApi<CompareResp>(() => (cmpMode.value && cmpPeople.value.length >= 1 ? (() => {
+  const p = new URLSearchParams({ people: cmpPeople.value.map(encodeURIComponent).join(';'), months: String(months.value) })
+  if (dayFrom.value) p.set('ship_from', dayFrom.value)
+  if (dayTo.value) p.set('ship_to', dayTo.value)
+  return `/api/people/compare?${p.toString()}`
+})() : ''), false)
 interface CompareRespX { months: string[]; series: Record<string, MonthDeal[]> }
 interface MonthDeal { month: string; deals: number; revenue: number }
 
@@ -45,6 +60,12 @@ watch(persons, (ps) => {
   }
 })
 
+const dayFrom = ref(''); const dayTo = ref('')
+const presetDays = ref(false)
+function isoD(d: Date) { return d.toISOString().slice(0, 10) }
+const todayChip = () => { dayFrom.value = dayTo.value = isoD(new Date()); presetDays.value = true }
+const yestChip = () => { const d = new Date(); d.setDate(d.getDate() - 1); dayFrom.value = dayTo.value = isoD(d); presetDays.value = true }
+const weekChip = () => { const a = new Date(); const b = new Date(); a.setDate(a.getDate() - 6); dayFrom.value = isoD(a); dayTo.value = isoD(b); presetDays.value = true }
 // ── ПЕРЕЗАГРУЗКИ (useApi-здесь-без-авто-watch —- вызываем-вручную) ──
 watch(months, () => {
   sum.load()
@@ -53,6 +74,11 @@ watch(months, () => {
 })
 watch(selected, (v) => { if (v && !cmpMode.value) detail.load() })
 watch([cmpPeople, cmpMode], () => { if (cmpMode.value && cmpPeople.value.length) cmpApi.load() })
+watch([dayFrom, dayTo], () => {
+  sum.load()
+  if (selected.value && !cmpMode.value) detail.load()
+  if (cmpMode.value && cmpPeople.value.length) cmpApi.load()
+})
 
 function shortName(full: string): string {
   const p = (full || '').split(' ')
@@ -161,6 +187,8 @@ const PERIODS: PChip[] = [
 ]
 const pChip = ref(12) // активный-период-в-месяцах
 watch(pChip, (v) => { months.value = v })
+
+// ── быстрые-ДНИ/НЕДЕЛЯ (сегодня/вчера/неделя —- по-датам-отгрузки) ──
 </script>
 
 <template>
@@ -170,7 +198,11 @@ watch(pChip, (v) => { months.value = v })
     <div class="hdr-row">
       <h3>Выручка по ответственным (отгруженные заказы)</h3>
       <div class="qf-group">
-        <button v-for="p in PERIODS" :key="p.months" class="chip" :class="{ on: months === p.months }" @click="months = p.months">{{ p.label }}</button>
+        <button class="chip" :class="{ on: presetDays && dayFrom === isoD(new Date()) }" @click="todayChip">Сегодня</button>
+        <button class="chip" :class="{ on: presetDays && (() => { const d = new Date(); d.setDate(d.getDate() - 1); return dayFrom === isoD(d) })() }" @click="yestChip">Вчера</button>
+        <button class="chip" :class="{ on: presetDays && (() => { const a = new Date(); a.setDate(a.getDate() - 6); return dayFrom === isoD(a) && dayTo === isoD(new Date()) })() }" @click="weekChip">Неделя</button>
+        <span class="chip-sep">·</span>
+        <button v-for="p in PERIODS" :key="p.months" class="chip" :class="{ on: !presetDays && months === p.months }" @click="months = p.months; presetDays = false; dayFrom = ''; dayTo = ''">{{ p.label }}</button>
       </div>
     </div>
     <div class="chart-box" style="height: 300px"><canvas ref="cTop"></canvas></div>
@@ -243,6 +275,7 @@ watch(pChip, (v) => { months.value = v })
 .chip:hover { border-color: var(--accent); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+.chip-sep { color: var(--muted); padding: 0 2px; }
 .cmp-pick { display: flex; gap: 5px; flex-wrap: wrap; }
 .cmp-pick .chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; }
 .cmp-pick .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
