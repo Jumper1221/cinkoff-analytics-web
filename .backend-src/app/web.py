@@ -192,9 +192,9 @@ def freshness():
 
 @app.get("/api/orders")
 def orders_list(qstr: str = Query("", alias="q"), status: str = "", since: str = "", till: str = "",
-          page: int = 1, per: int = 50):
-    """Страничный список заказов: фильтры по тексту/статусу/датам."""
-    page = max(1, page); per = max(10, min(200, per))
+          limit: int = 50, offset: int = 0):
+    """Страничный список заказов: фильтры по тексту/статусу/датам. Пагинация = стандартные limit/offset."""
+    limit = max(1, min(200, limit))
     where = ["order_date IS NOT NULL"]; args: list = []
     if qstr:
         where.append("(number ILIKE %s OR contractor_name ILIKE %s OR id_1c ILIKE %s)")
@@ -211,8 +211,8 @@ def orders_list(qstr: str = Query("", alias="q"), status: str = "", since: str =
         SELECT id, order_id, number, order_date, order_status, contractor_name, branch_name, sum
         FROM orders WHERE {W}
         ORDER BY order_date DESC LIMIT %s OFFSET %s
-    """, tuple(args + [per, (page - 1) * per]))
-    return {"items": rows, "total": total, "page": page, "per": per}
+    """, tuple(args + [limit, offset]))
+    return {"items": rows, "total": total, "limit": limit, "offset": offset}
 
 
 @app.get("/api/catalog/search")

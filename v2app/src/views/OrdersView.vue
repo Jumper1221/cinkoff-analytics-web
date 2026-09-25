@@ -38,7 +38,7 @@ const rapid: Rap[] = [
 ]
 
 const qs = computed(() => {
-  const p = new URLSearchParams({ page: String(page.value), per: String(PAGE) })
+  const p = new URLSearchParams({ limit: String(PAGE), offset: String((page.value - 1) * PAGE) })
   if (q.value) p.set('q', q.value)
   if (status.value) p.set('status', status.value)
   if (fromDate.value) p.set('since', fromDate.value)
