@@ -47,6 +47,7 @@ const qs = computed(() => {
 })
 const orders = useApi<OrdersPage>(() => qs.value)
 watch([q, status, fromDate, toDate], () => { page.value = 1; orders.load() })
+watch(page, () => { orders.load() })   // ← клик-по-странице-меняет-только-page: без-этого-watch-запрос-не-уходит
 const totalPages = computed(() => Math.max(1, Math.ceil((orders.data.value?.total ?? 0) / PAGE)))
 
 const csvUrl = computed(() => {
