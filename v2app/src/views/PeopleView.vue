@@ -408,7 +408,16 @@ const cmpTable = computed(() => {
 const detailRows = computed(() => {
   const d = detail.data.value as any
   if (d?.gran && d.gran !== 'month') return (d.series ?? []).map((r: any) => ({ period: r.month, deals: r.deals, revenue: r.revenue }))
-  return (d?.monthly ?? []).map((m: any) => ({ period: m.month, deals: m.deals, revenue: m.revenue, avg_check: m.avg_check }))
+  // Год-к-году: из-прошлогоднего-среза (ключ pm —- натуральный-месяц-б-Е-З-сдвига, поэтому-прямо-по-месяцу-оси):
+  const pyMap: Record<string, { deals: number; revenue: number; avg_check: number }> = {}
+  for (const r of (d?.prev_year_same_month ?? []) as PYRow[]) pyMap[r.pm] = { deals: r.deals, revenue: r.revenue, avg_check: r.avg_check }
+  return (d?.monthly ?? []).map((m: any) => {
+    const p = pyMap[m.month]
+    const cur = Number(m.avg_check) || 0
+    const prev = Number(p?.avg_check ?? 0)
+    const yoy = prev > 0 ? ((cur - prev) / prev) * 100 : null
+    return { period: m.month, deals: m.deals, revenue: m.revenue, avg_check: m.avg_check, yoy }
+  })
 })
 
 const shortDay = (iso: string) => (iso ? iso.slice(8) + '.' + iso.slice(5, 7) : '—')  // 25.09
@@ -513,7 +522,7 @@ watch(pChip, (v) => { months.value = v })
           <td class="num">{{ fmtInt(m.deals) }}</td>
           <td class="num">{{ moneyAuto(m.revenue) }}</td>
           <td class="num" v-if="detail.data.value?.gran === 'month'">{{ moneyAuto((m as any).avg_check) }}</td>
-          <td class="num" v-if="detail.data.value?.gran === 'month'">—</td>
+          <td class="num" v-if="detail.data.value?.gran === 'month'"><span :style="(m as any).yoy == null ? 'color:var(--muted)' : ((m as any).yoy >= 0 ? 'color:var(--ok)' : 'color:var(--err)')">{{ (m as any).yoy == null ? '—' : ((m as any).yoy >= 0 ? '▲ ' : '▼ ') + Math.abs(Math.round((m as any).yoy)) + '%' }}</span></td>
         </tr>
       </tbody>
     </table>

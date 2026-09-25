@@ -1005,21 +1005,25 @@ def people_monthly(person: str, months: int = 24, ship_from: str = "", ship_to: 
           {dsql}
         GROUP BY 1 ORDER BY 1
     """, tuple([person] + list(dargs)))
-    # прошлый-год-в-то-же-месяц (за-вычетом-текущего-окна):
-    _end_clause = (f"AND shipment_date < '{ship_to}'::date + interval '1 day'" if ship_to
-                   else "AND shipment_date < (CURRENT_DATE - (%s || ' months')::interval)")
-    _end_args = (person,) if ship_from else (person, str(months))
-    _win_sql = (f"AND shipment_date >= '{ship_from}'::date - interval '1 year'" if ship_from else "{win} - interval '1 year'")
+    _to_eff = ship_to or (datetime.date.today().isoformat())
+    # прошлый-год-в-то-же-месяц: ровно-то-же-ОКНО, сд-В-И-Н-У-ТОЕ-на-1-год-назад.
+    # КЛЮЧ pm = натуральный-месяц +1-год → фронт-берёт-по-ТО-МУ-же-месяцу-оси (pyMap[m.month]).
+    if ship_from:
+        _to = _to_eff
+        _win_sql = (f"AND shipment_date >= '{ship_from}'::date - interval '1 year' "
+                    f"AND shipment_date < '{_to}'::date + interval '1 day' - interval '1 year'")
+    else:
+        _win_sql = (f"AND shipment_date >= (CURRENT_DATE - ({months} || ' months')::interval) - interval '1 year' "
+                    f"AND shipment_date < (CURRENT_DATE - interval '1 year') + interval '1 day'")
     prev_year = q(f"""
-        SELECT TO_CHAR(date_trunc('month', shipment_date) - interval '1 year', 'YYYY-MM') AS pm,
+        SELECT TO_CHAR(date_trunc('month', shipment_date) + interval '1 year', 'YYYY-MM') AS pm,
                COUNT(*)::int AS deals, COALESCE(SUM(sum), 0)::float8 AS revenue,
                COALESCE(AVG(sum), 0)::float8 AS avg_check
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = %s
           {_win_sql}
-          {f"AND shipment_date < '{ship_to}'::date" if ship_to else "AND shipment_date < (CURRENT_DATE - (%s || ' months')::interval)"}
         GROUP BY 1 ORDER BY 1
-    """, _end_args if ship_from else (person, str(months), str(months)))
+    """, (person,))
     # гранулярная-разбивка-для-ГРАФИКА: по-длине-диапазона (или-по-кол-ву-месяцев)
     gran = _gran_for(months, ship_from, ship_to)
     if gran == "day":
