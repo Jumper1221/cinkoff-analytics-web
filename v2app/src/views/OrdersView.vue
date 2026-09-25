@@ -332,4 +332,16 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
 .pop-hint { font-size: 11px; color: var(--muted); }
 .pop-dates { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .pop-apply { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+
+.seg-btn:hover { background: rgba(59,130,246,.08); }
+.seg-btn.on { background: var(--accent); color: #fff; font-weight: 600; }
+.seg-btn:last-child { border-right: 0; }
+.btn-range.act { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.btn-range .caret { opacity: .55; font-size: 10px; }
+.x-reset:hover { color: var(--err); border-color: var(--err); }
+.yr.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pop-apply:disabled { opacity: .45; cursor: default; }
+.pop-dates .arr { color: var(--muted); }
+.pop-col:first-child { padding-left: 2px; }
+.pop-col:last-child { padding-right: 0; }
 </style>
