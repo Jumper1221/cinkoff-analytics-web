@@ -27,25 +27,44 @@ const weekThis = () => {
   setRange(mon, now)
 }
 const monthThis = () => { const n = new Date(); setRange(new Date(n.getFullYear(), n.getMonth(), 1), n) }
-const q3 = () => { const n = new Date(); const a = new Date(n); a.setMonth(n.getMonth() - 3); a.setDate(a.getDate() + 1); setRange(a, n) }
-const q6 = () => { const n = new Date(); const a = new Date(); a.setMonth(n.getMonth() - 6); a.setDate(a.getDate() + 1); setRange(a, n) }
-const year1 = () => { const n = new Date(); const a = new Date(); a.setFullYear(n.getFullYear() - 1); a.setDate(a.getDate() + 1); setRange(a, n) }
-const yearAll = () => { setRange(new Date(2019, 0, 1), new Date()) }
-const yearsThis = () => { const n = new Date(); setRange(new Date(n.getFullYear(), 0, 1), n) }
-type Rap = { label: string; fn: () => void; on: () => boolean }
-const rapid: Rap[] = [
-  { label: 'Сегодня',  fn: today,    on: () => fromDate.value === iso(new Date()) && toDate.value === fromDate.value },
-  { label: 'Вчера',    fn: () => { const d = new Date(); d.setDate(d.getDate() - 1); setRange(d, d) },
-                       on: () => { const d = new Date(); d.setDate(d.getDate() - 1); return fromDate.value === iso(d) && toDate.value === fromDate.value } },
-  { label: '7 дней',   fn: week7,    on: () => { const a = new Date(); a.setDate(a.getDate() - 6); return fromDate.value === iso(a) && !!toDate.value } },
-  { label: 'Эта нед.', fn: weekThis, on: () => { const n = new Date(); const dow = (n.getDay() + 6) % 7; const m = new Date(n); m.setDate(n.getDate() - dow); return fromDate.value === iso(m) && !!toDate.value } },
-  { label: 'Месяц',    fn: monthThis, on: () => fromDate.value === iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) && !!toDate.value },
-  { label: 'Квартал',  fn: q3, on: () => { const n = new Date(); const a = new Date(); a.setMonth(n.getMonth() - 3); a.setDate(a.getDate() + 1); return fromDate.value === iso(a) && !!toDate.value } },
-  { label: 'Полгода',  fn: q6, on: () => { const n = new Date(); const a = new Date(); a.setMonth(n.getMonth() - 6); a.setDate(a.getDate() + 1); return fromDate.value === iso(a) && !!toDate.value } },
-  { label: 'Год',      fn: year1, on: () => { const n = new Date(); const a = new Date(); a.setFullYear(n.getFullYear() - 1); a.setDate(a.getDate() + 1); return fromDate.value === iso(a) && !!toDate.value } },
-  { label: 'Год 2026',   fn: yearsThis, on: () => fromDate.value === iso(new Date(new Date().getFullYear(), 0, 1)) && !!toDate.value },
-  { label: 'Всё',      fn: yearAll, on: () => fromDate.value === '2019-01-01' },
-]
+
+// ── Периоды: сегменты-быстрых (Сегодня/Вчера/7-дней/Эта-нед./Месяц) + кнопка-📅-с-поповером (месяц/год/свой) ──
+const isoYM = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+const YEARS = (() => { const y0 = 2019, y1 = new Date().getFullYear(); return Array.from({ length: y1 - y0 + 1 }, (_, i) => y1 - i) })()
+const MONTHS_ALL = (() => { // последние-84-месяца (7-лет)
+  const arr: string[] = []; const n = new Date()
+  for (let i = 0; i < 84; i++) { const d = new Date(n.getFullYear(), n.getMonth() - i, 1); arr.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`) }
+  return arr
+})()
+const MON_RU = ['', 'январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь']
+const monthLabel = (ym: string) => { const [y, m] = ym.split('-'); return `${MON_RU[+m]} ${y}` }
+const dd = (v: string) => (v ? v.slice(8) + '.' + v.slice(5, 7) + '.' + v.slice(2, 4) : '—')
+const YEARS_ALL = YEARS  // с-2019
+
+// поп-О-В-Е-Р-периода:
+const popOpen = ref(false)
+const fmMonth = ref(''); const fmYear = ref('')
+const monthManual = ref(false); const yearManual = ref(false)
+const watchMonth = () => { if (fmMonth.value) { const [y, m] = fmMonth.value.split('-'); const last = new Date(+y, +m, 0); const isCur = fmMonth.value === isoYM(new Date()); setRange(new Date(+y, +m - 1, 1), isCur ? new Date() : last); monthManual.value = true; yearManual.value = false; popOpen.value = false } }
+const pickYear = (yv: string) => { const n = new Date(+yv, 0, 1); const isCur = +yv === new Date().getFullYear(); setRange(n, isCur ? new Date() : new Date(+yv, 11, 31)); yearManual.value = true; monthManual.value = false; popOpen.value = false }
+function togglePop() { popOpen.value = !popOpen.value }
+function onDocClick(e: MouseEvent) { const t = e.target as HTMLElement; if (!t.closest('.period-pop') && !t.closest('.btn-range')) popOpen.value = false }
+function onKey(e: KeyboardEvent) { if (e.key === 'Escape') popOpen.value = false }
+onMounted(() => { document.addEventListener('click', onDocClick); document.addEventListener('keydown', onKey) })
+onBeforeUnmount(() => { document.removeEventListener('click', onDocClick); document.removeEventListener('keydown', onKey) })
+function pickYearFromPopImpl(yv: string) { const n = new Date(+yv, 0, 1); const isCur = +yv === new Date().getFullYear(); setRange(n, isCur ? new Date() : new Date(+yv, 11, 31)); yearManual.value = true; monthManual.value = false; popOpen.value = false }
+
+// лейбл-кнопки-периода: всегда-человек-П-О-Н-Я-Т-НО-(
+const rangeLabel = computed(() => {
+  if (monthManual.value && fmMonth.value) return monthLabel(fmMonth.value)
+  if (yearManual.value && fmYear.value) return fmYear.value + ' год'
+  if (fromDate.value && toDate.value) return (fromDate.value === toDate.value ? dd(fromDate.value) : dd(fromDate.value) + ' → ' + dd(toDate.value))
+  return 'все-время'
+})
+const manualActive = computed(() => monthManual.value || yearManual.value)
+function resetRange() { fromDate.value = ''; toDate.value = ''; monthManual.value = false; yearManual.value = false; fmMonth.value = ''; fmYear.value = ''; popOpen.value = false }
+function setCustom() { if (cuFrom.value && cuTo.value) { setRange(new Date(cuFrom.value), new Date(cuTo.value)); monthManual.value = false; yearManual.value = false; popOpen.value = false } }
+const cuFrom = ref(''); const cuTo = ref('')  // свой-диапазон-в-поповере
 
 const qs = computed(() => {
   const p = new URLSearchParams({ limit: String(PAGE), offset: String((page.value - 1) * PAGE) })
@@ -152,8 +171,45 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
   <div class="panel">
     <!-- строка 1: быстрые фильтры -->
     <div class="qf-row">
-      <div class="qf-group">
-        <button v-for="r in rapid" :key="r.label" class="chip" :class="{ on: r.on() }" @click="r.fn()">{{ r.label }}</button>
+      <div class="qf-group" style="position: relative;">
+        <div class="seg">
+          <button class="seg-btn" :class="{ on: fromDate === iso(new Date()) && toDate === fromDate }" @click="today">Сегодня</button>
+          <button class="seg-btn" :class="{ on: (() => { const d = new Date(); d.setDate(d.getDate() - 1); return fromDate === iso(d) && toDate === fromDate })() }" @click="yesterday">Вчера</button>
+          <button class="seg-btn" :class="{ on: (() => { const a = new Date(); a.setDate(a.getDate() - 6); return fromDate === iso(a) && !!toDate })() }" @click="week7">7 дней</button>
+          <button class="seg-btn" :class="{ on: (() => { const n = new Date(); const dow = (n.getDay() + 6) % 7; const m = new Date(n); m.setDate(n.getDate() - dow); return fromDate === iso(m) && !!toDate })() }" @click="weekThis">Эта нед.</button>
+          <button class="seg-btn" :class="{ on: fromDate === iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) && !!toDate }" @click="monthThis">Месяц</button>
+        </div>
+        <button class="btn-range" :class="{ act: manualActive }" @click.stop="togglePop" title="Месяц / год / свой-диапазон">📅 {{ rangeLabel }} <span class="caret">▾</span></button>
+        <button v-if="manualActive" class="x-reset" @click="resetRange" title="Сбросить-период">✕</button>
+
+        <div v-if="popOpen" class="period-pop" @click.stop>
+          <div class="pop-col">
+            <div class="pop-h3">Месяц</div>
+            <select class="pop-sel" v-model="fmMonth" @change="watchMonth">
+              <option value="">выбрать…</option>
+              <option v-for="ym in MONTHS_ALL" :key="ym" :value="ym">{{ monthLabel(ym) }}</option>
+            </select>
+            <div class="pop-hint">месяц-целиком</div>
+          </div>
+          <div class="pop-sep"></div>
+          <div class="pop-col">
+            <div class="pop-h3">Год</div>
+            <div class="pop-years">
+              <button v-for="y in YEARS" :key="y" class="yr" :class="{ on: yearManual && fmYear === String(y) }" @click="pickYear(String(y))">{{ y }}</button>
+            </div>
+            <div class="pop-hint" v-if="yearManual && fmYear">{{ +fmYear === new Date().getFullYear() ? 'с-1-января-по-сегодня' : 'весь-год' }}</div>
+          </div>
+          <div class="pop-sep"></div>
+          <div class="pop-col">
+            <div class="pop-h3">Свой-диапазон</div>
+            <div class="pop-dates">
+              <input type="date" v-model="cuFrom" class="f-date2" />
+              <span class="arr">→</span>
+              <input type="date" v-model="cuTo" class="f-date2" />
+            </div>
+            <button class="pop-apply" :disabled="!cuFrom || !cuTo" @click="setCustom">Показать-за-период</button>
+          </div>
+        </div>
       </div>
       <span class="qf-total">{{ totalShown ? totalShown.toLocaleString('ru-RU') + ' зак.' : '—' }}</span>
       <button v-if="hasFilter" class="chip-ghost" @click="clearAll">✕ сброс</button>
@@ -266,4 +322,18 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
   background: var(--accent); color: #fff; border-radius: 9px; font-weight: 600; font-size: 13px;
   border: none; cursor: pointer; }
 .btn-csv:hover { filter: brightness(1.08); }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg-btn { border: 0; background: transparent; color: var(--text); padding: 6px 14px; font-size: 13px; cursor: pointer; border-right: 1px solid var(--line); }
+.btn-range { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.x-reset { border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 50%; width: 26px; height: 26px; cursor: pointer; line-height: 1; }
+.period-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: flex; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.14); padding: 14px 6px; width: max-content; max-width: min(720px, calc(100vw - 320px)); }
+.pop-col { padding: 0 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pop-sep { width: 1px; background: var(--line); }
+.pop-sel { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.pop-years { display: flex; flex-wrap: wrap; gap: 5px; max-width: 210px; }
+.yr { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
+.pop-hint { font-size: 11px; color: var(--muted); }
+.pop-dates { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pop-apply { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
 </style>
