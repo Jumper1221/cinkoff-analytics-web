@@ -6,7 +6,6 @@ import type { HeatmapResp } from '../api/types'
 const metric = ref<'orders' | 'revenue' | 'avg'>('revenue')
 const h = useApi<HeatmapResp>(() => `/api/heatmap?metric=${metric.value}`)
 watch(metric, () => h.load())
-import { watch } from 'vue'
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
 
