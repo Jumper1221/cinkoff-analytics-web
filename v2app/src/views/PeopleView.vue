@@ -147,6 +147,20 @@ const fmtShortMonth = (iso: string) => {
   const names = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']
   return `${names[+m - 1]} ${y}`
 }
+
+// ── быстрые-периоды (как-в-«Заказах»): чипы-вместо-выпадашки-«месяцев» ──
+type PChip = { label: string; months: number }
+const PERIODS: PChip[] = [
+  { label: 'Месяц',   months: 1 },
+  { label: 'Квартал', months: 3 },
+  { label: 'Полгода', months: 6 },
+  { label: 'Год',     months: 12 },
+  { label: '2 года',  months: 24 },
+  { label: '3 года',  months: 36 },
+  { label: 'Всё',     months: 60 },
+]
+const pChip = ref(12) // активный-период-в-месяцах
+watch(pChip, (v) => { months.value = v })
 </script>
 
 <template>
@@ -155,13 +169,9 @@ const fmtShortMonth = (iso: string) => {
   <div class="panel">
     <div class="hdr-row">
       <h3>Выручка по ответственным (отгруженные заказы)</h3>
-      <label class="period">
-        Период:
-        <select v-model.number="months" class="p-select">
-          <option :value="6">6 мес</option><option :value="12">12 мес</option>
-          <option :value="24">24 мес</option><option :value="36">36 мес</option><option :value="60">Всё</option>
-        </select>
-      </label>
+      <div class="qf-group">
+        <button v-for="p in PERIODS" :key="p.months" class="chip" :class="{ on: months === p.months }" @click="months = p.months">{{ p.label }}</button>
+      </div>
     </div>
     <div class="chart-box" style="height: 300px"><canvas ref="cTop"></canvas></div>
     <table>
@@ -227,10 +237,14 @@ const fmtShortMonth = (iso: string) => {
 
 <style scoped>
 .hdr-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.period { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
-.period select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+.qf-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  border-radius: 999px; padding: 5px 13px; font-size: 13px; cursor: pointer; transition: all .12s; }
+.chip:hover { border-color: var(--accent); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
 .cmp-pick { display: flex; gap: 5px; flex-wrap: wrap; }
 .cmp-pick .chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 11px; font-size: 12.5px; cursor: pointer; }
 .cmp-pick .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.up { color: var(--ok); } .down { color: var(--err); }
 </style>

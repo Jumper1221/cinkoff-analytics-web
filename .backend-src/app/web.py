@@ -135,7 +135,7 @@ def years():
 
 @app.get("/api/monthly")
 def monthly(months: int = 24):
-    months = max(3, min(60, months))
+    months = max(1, min(60, months))
     return q(f"""
         SELECT EXTRACT(year FROM order_date)::int AS year,
                EXTRACT(month FROM order_date)::int AS month,
@@ -482,7 +482,7 @@ def compare(period: str = "month", anchor: str = "", steps: int = 1):
 @app.get("/api/leadtime")
 def leadtime(months: int = 12):
     """Скорость исполнения: медиана дней заказ→shipment_date по месяцам + % отмен."""
-    months = max(3, min(60, months))
+    months = max(1, min(60, months))
     return q(f"""
         WITH done AS (
           SELECT date_trunc('month', order_date) AS m,
@@ -503,7 +503,7 @@ def leadtime(months: int = 12):
 @app.get("/api/cancel_rate")
 def cancel_rate(months: int = 12):
     """% отмен по месяцам (по дате заказа)."""
-    months = max(3, min(60, months))
+    months = max(1, min(60, months))
     return q(f"""
         SELECT to_char(date_trunc('month', order_date), 'YYYY-MM') AS label,
                COUNT(*)::int AS orders,
@@ -888,7 +888,7 @@ def TO_CHAR_TODAY() -> str:
 def people_summary(months: int = 12):
     """Сводка-по-ответственным: продажи-= отгруженные-заказы (shipment_date-задан).
     Таблица-за-послед-N-месяцев + динамика-к-прошлому-году-в-тот-же-месяц."""
-    months = max(3, min(60, months))
+    months = max(1, min(60, months))
     rows = q("""
         WITH shipped AS (
             SELECT demand_responsible AS person,
@@ -931,7 +931,7 @@ def people_summary(months: int = 12):
 def people_monthly(person: str, months: int = 24):
     """Помесячные-продажи-одного-человека: заказы, выручка, средний-чек.
     Плюс-тот-же-месяц-прошлого-года (для-«год-к-году»)."""
-    months = max(3, min(60, months))
+    months = max(1, min(60, months))
     cur = q("""
         SELECT TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM') AS month,
                COUNT(*)::int AS deals,
@@ -960,7 +960,7 @@ def people_monthly(person: str, months: int = 24):
 @app.get("/api/people/compare")
 def people_compare(people: str, months: int = 12):
     """Сравнение-нескольких-людей-помесячно (до-5). people=Иван;Мария;..."""
-    months = max(3, min(60, months))
+    months = max(1, min(60, months))
     persons = [p.strip() for p in (people or "").split(";") if p.strip()][:5]
     if not persons:
         return {"persons": [], "series": {}}
