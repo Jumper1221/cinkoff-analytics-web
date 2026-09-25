@@ -222,7 +222,7 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
             <tbody>
               <tr v-for="(it, i) in (dossier.data.value.items ?? [])" :key="i">
                 <td class="ellipsis" :title="it.name">{{ it.name }}</td>
-                <td class="num">{{ it.qty }}</td><td class="num">{{ fmtMoney(it.price) }}</td><td class="num">{{ fmtMoney(it.total) }}</td>
+                <td class="num">{{ it.quantity ?? it.qty }}</td><td class="num">{{ fmtMoney(it.price) }}</td><td class="num">{{ fmtMoney(it.total) }}</td>
               </tr>
             </tbody>
           </table>
