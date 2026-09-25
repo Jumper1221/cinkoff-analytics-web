@@ -53,3 +53,13 @@ export const fmtMln = (v: number | null | undefined) =>
 export const fmtDate = (v: string | null | undefined) => (v ? v.slice(0, 10) : '—')
 export const fmtInt = (v: number | null | undefined) =>
   v == null ? '—' : new Intl.NumberFormat('ru-RU').format(v)
+/** Авто-градация-денег: <1 млн → тыс, дальше млн; >1 млрд → млрд. 0 → «0». */
+export function moneyAuto(v: number | null | undefined): string {
+  if (v == null) return '—'
+  const a = Math.abs(v)
+  if (a >= 1e9) return (v / 1e9).toFixed(1).replace('.', ',') + ' млрд'
+  if (a >= 1e6) return (v / 1e6).toFixed(1).replace('.', ',') + ' млн'
+  if (a >= 1e3) return (v / 1e3).toFixed(0).replace('.', ',') + ' тыс'
+  if (a === 0) return '0'
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(v) + ' ₽'
+}

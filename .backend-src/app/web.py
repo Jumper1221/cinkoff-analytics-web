@@ -920,6 +920,7 @@ def people_summary(months: int = 12, ship_from: str = "", ship_to: str = ""):
                SUM(deals)::int                        AS deals_total,
                ROUND(SUM(revenue)::numeric / 1e6, 2)::float8 AS revenue_mln,
                ROUND(AVG(deals)::numeric, 1)::float8  AS deals_per_month,
+               ROUND((SUM(revenue) / COUNT(DISTINCT m))::numeric / 1e6, 2)::float8 AS avg_month_revenue_mln,
                MIN(m)::text                           AS first_month
         FROM shipped GROUP BY 1
         ORDER BY SUM(revenue) DESC

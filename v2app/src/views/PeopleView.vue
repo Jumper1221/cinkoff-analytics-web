@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, type Ref } from 'vue'
-import { useApi, fmtInt, fmtMln, fmtMoney } from '../api/client'
+import { useApi, fmtInt, fmtMln, fmtMoney, moneyAuto } from '../api/client'
 import { useChart, chartColors } from '../api/useChart'
 
 // ── состояние: период, выбор-человека, режим-сравнения ──
@@ -11,7 +11,7 @@ const cmpMode = ref(false)
 
 interface SumResp {
   period_months: number
-  summary: { person: string; deals_total: number; revenue_mln: number; deals_per_month: number; first_month: string }[]
+  summary: { person: string; deals_total: number; revenue_mln: number; deals_per_month: number; avg_month_revenue_mln?: number; first_month: string }[]
   by_month: Record<string, { month: string; deals: number; revenue: number }[]>
 }
 interface MonthResp {
@@ -106,11 +106,18 @@ const { canvas: cTop } = useChart(() => {
   const s = (sum.data.value?.summary ?? []).slice(0, 10)
   if (!s.length) return null
   const C = chartColors()
+  // авто-градация: если-все-суммы-малые (<1 млн на-человека) —- рисуем-в-тысячах, иначе-в-млн
+  const useThousand = (s as any[]).length > 0 && (s as any[]).every((r: any) => Math.abs(r.revenue_mln) < 1)
+  const unitTop = useThousand ? 'тыс ₽' : 'млн ₽'
+  const data = (s as any[]).map((r: any) => useThousand ? +(r.revenue_mln * 1000).toFixed(0) : +r.revenue_mln.toFixed(2))
   return {
     type: 'bar',
     data: { labels: (s as any[]).map(r => shortName(r.person)),
-      datasets: [{ label: 'Выручка, млн', data: (s as any[]).map(r => r.revenue_mln), backgroundColor: C.accent + 'CC', borderRadius: 4 }] },
-    options: { maintainAspectRatio: false, scales: { y: { ticks: { color: C.muted }, grid: { color: C.border } }, x: { ticks: { color: C.muted, autoSkip: false, maxRotation: 35 }, grid: { display: false } } }, plugins: { legend: { display: false } } },
+      datasets: [{ label: 'Выручка, ' + unitTop, data, backgroundColor: C.accent + 'CC', borderRadius: 4 }] },
+    options: { maintainAspectRatio: false,
+      scales: { y: { title: { display: true, text: unitTop }, ticks: { color: C.muted }, grid: { color: C.border } },
+                x: { ticks: { color: C.muted, autoSkip: false, maxRotation: 35 }, grid: { display: false } } },
+      plugins: { legend: { display: false } } },
   } as any
 }, dep as Ref<unknown>)
 
@@ -128,31 +135,37 @@ const { canvas: cPerson } = useChart(() => {
     // один-день (Сегодня/Вчера): прямые-линии-уровня-значения (не-«0→X»)
     if (labels.length === 1) {
       const day = labels[0]
-      const rev = +(((s.by_day[selected.value] || []).find((r: DayRow) => r.day === day)?.revenue ?? 0) / 1e6).toFixed(3)
+      const revRaw = +(((s.by_day[selected.value] || []).find((r: DayRow) => r.day === day)?.revenue ?? 0))
       const deals = ((s.by_day[selected.value] || []).find((r: DayRow) => r.day === day)?.deals ?? 0)
+      const th = Math.abs(revRaw) < 1e6 && revRaw !== 0
+      const unit = th ? 'тыс ₽' : 'млн ₽'
+      const rev = th ? +(revRaw / 1e3).toFixed(1) : +(revRaw / 1e6).toFixed(3)
       return {
         type: 'line',
         data: { labels: [shortDay(day) + ' 0ч', shortDay(day) + ' 24ч'],
           datasets: [
-            { label: `Выручка: ${rev} млн`, data: [rev, rev], borderColor: C.accent, tension: 0, pointRadius: 0, borderWidth: 2, yAxisID: 'y' },
+            { label: `Выручка: ${moneyAuto(revRaw)}`, data: [rev, rev], borderColor: C.accent, tension: 0, pointRadius: 0, borderWidth: 2, yAxisID: 'y' },
             { label: `Сделок: ${deals}`, data: [deals, deals], borderColor: C.ok, tension: 0, pointRadius: 0, borderWidth: 2, yAxisID: 'y2', borderDash: [6, 3] },
           ] },
         options: { maintainAspectRatio: false,
-          scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+          scales: { y: { title: { display: true, text: unit }, ticks: { color: C.muted }, grid: { color: C.border } },
                     y2: { position: 'right', ticks: { color: C.muted }, grid: { drawOnChartArea: false } },
                     x: { ticks: { color: C.muted }, grid: { display: false } } },
           plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
       } as any
     }
+    const raws = labels.map(l => (((s.by_day[selected.value] || []).find((r: DayRow) => r.day === l)?.revenue ?? 0)))
+    const useT = raws.length > 0 && raws.every(v => Math.abs(v) < 1e6)
+    const unitD = useT ? 'тыс ₽/день' : 'млн ₽/день'
     return {
       type: 'bar',
       data: { labels,
         datasets: [
-          { type: 'bar', label: 'Выручка, млн/день', data: labels.map(l => +(((s.by_day[selected.value] || []).find((r: DayRow) => r.day === l)?.revenue ?? 0) / 1e6).toFixed(2)), backgroundColor: C.accent + 'CC', borderRadius: 3, yAxisID: 'y' },
+          { type: 'bar', label: 'Выручка, ' + (useT ? 'тыс/день' : 'млн/день'), data: raws.map(v => useT ? +(v / 1e3).toFixed(1) : +(v / 1e6).toFixed(2)), backgroundColor: C.accent + 'CC', borderRadius: 3, yAxisID: 'y' },
           { type: 'line', label: 'Сделок', data: labels.map(l => (s.by_day[selected.value] || []).find((r: DayRow) => r.day === l)?.deals ?? 0), borderColor: C.ok, tension: 0.3, pointRadius: 2, yAxisID: 'y2' },
         ] },
     options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-      scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+      scales: { y: { title: { display: true, text: unitD }, ticks: { color: C.muted }, grid: { color: C.border } },
                 y2: { position: 'right', ticks: { color: C.muted }, grid: { drawOnChartArea: false } },
                 x: { ticks: { color: C.muted, maxTicksLimit: 12 }, grid: { display: false } } },
       plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
@@ -161,15 +174,19 @@ const { canvas: cPerson } = useChart(() => {
   // месячный-режим (gran-из-бэка: month=помесячно+YoY, week=понедельно, day=подневно; presetDays-перекрыт-веткой-выше)
   if (!d?.series?.length) return null
   const C = chartColors()
-  const ser = d.series as MonthDeal[]
-  const unit = d.gran === 'day' ? 'млн/день' : (d.gran === 'week' ? 'млн/нед' : 'млн')
+  const ser = d.series as GranRow[]
+  // АВТО-ГРАДАЦИЯ: все-значения-периода <1 млн → тысячи, иначе-миллионы (ось-подписана-единицами)
+  const maxV = Math.max(...ser.map(m => Math.abs(m.revenue)), 0)
+  const useT = maxV < 1e6
+  const div = useT ? 1e3 : 1e6
+  const unitD = (useT ? 'тыс' : 'млн') + (d.gran === 'day' ? ' ₽/день' : (d.gran === 'week' ? ' ₽/нед' : ' ₽'))
+  const unit = (useT ? 'тыс' : 'млн') + (d.gran === 'day' ? '/день' : (d.gran === 'week' ? '/нед' : ''))
   const shortP = (p: string) => (d.gran === 'month' ? fmtShortMonth(p) : (p ? p.slice(8) + '.' + p.slice(5, 7) : '—'))
   const labels = ser.map((m) => shortP(m.month))
-  const revData = ser.map((m) => +(m.revenue / 1e6).toFixed(2))
-  const dealsData = ser.map((m) => m.deals)
+  const revData = ser.map((m) => +(m.revenue / div).toFixed(useT ? 1 : 2))
   const datasets: any[] = [
     { type: 'bar', label: 'Выручка, ' + unit, data: revData, backgroundColor: C.accent + 'CC', borderRadius: 3, yAxisID: 'y' },
-    { type: 'line', label: 'Сделок', data: dealsData, borderColor: C.ok, tension: 0.3, pointRadius: 2, yAxisID: 'y2' },
+    { type: 'line', label: 'Сделок', data: ser.map((m) => m.deals), borderColor: C.ok, tension: 0.3, pointRadius: 2, yAxisID: 'y2' },
   ]
   if (d.gran === 'month') { // YoY-пунктир-имеет-смысл-только-в-помесячном-режиме
     const pyMap: Record<string, MonthRow> = {}
@@ -180,7 +197,7 @@ const { canvas: cPerson } = useChart(() => {
     type: 'bar',
     data: { labels, datasets },
     options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-      scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+      scales: { y: { title: { display: true, text: unitD }, ticks: { color: C.muted }, grid: { color: C.border } },
                 y2: { position: 'right', ticks: { color: C.muted }, grid: { drawOnChartArea: false } },
                 x: { ticks: { color: C.muted, maxTicksLimit: 14, maxRotation: 45 }, grid: { display: false } } },
       plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
@@ -205,29 +222,37 @@ const { canvas: cCmp } = useChart(() => {
     if (!people.length) return null
     // один-день (Сегодня/Вчера): линия-«каждому-своя-горизонталь» —- ось-2-точки (Д), значение-константа,-не-«0→X»
     if (labels.length === 1) {
+      const val = (p: string) => ((s.by_day[p] || []).find((r: DayRow) => r.day === labels[0])?.revenue ?? 0)
+      const maxV = Math.max(...people.map(val), 0)
+      const useT = maxV < 1e6 && maxV > 0
+      const div = useT ? 1e3 : 1e6
+      const unitC = useT ? 'тыс ₽' : 'млн ₽'
       return {
         type: 'line',
         data: { labels: [shortDay(labels[0]) + ' 0ч', shortDay(labels[0]) + ' 24ч'],
           datasets: people.map((p, i) => {
-            const rev = +(((s.by_day[p] || []).find((r: DayRow) => r.day === labels[0])?.revenue ?? 0) / 1e6).toFixed(3)
             const deals = ((s.by_day[p] || []).find((r: DayRow) => r.day === labels[0])?.deals ?? 0)
-            return { label: `${shortName(p)}: ${rev} млн / ${deals} сд`,
-              data: [rev, rev], borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0, pointRadius: 0, borderWidth: 2, fill: false }
+            return { label: `${shortName(p)}: ${moneyAuto(val(p))} / ${deals} сд`,
+              data: [val(p) / div, val(p) / div], borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0, pointRadius: 0, borderWidth: 2, fill: false }
           }) },
         options: { maintainAspectRatio: false,
-          scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+          scales: { y: { title: { display: true, text: unitC }, ticks: { color: C.muted }, grid: { color: C.border } },
                     x: { ticks: { color: C.muted }, grid: { display: false } } },
           plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
       } as any
     }
+    const allVals = people.flatMap((p: string) => (s.by_day[p] || []).map((r: DayRow) => Math.abs(r.revenue)))
+    const useT = allVals.length > 0 && Math.max(...allVals, 0) < 1e6
+    const div = useT ? 1e3 : 1e6
+    const unitC = useT ? 'тыс ₽' : 'млн ₽'
     return {
       type: 'line',
       data: { labels: labels.map(shortDay),
         datasets: people.map((p, i) => ({ label: shortName(p),
-          data: labels.map(l => +(((s.by_day[p] || []).find((r: DayRow) => r.day === l)?.revenue ?? 0) / 1e6).toFixed(3)),
+          data: labels.map(l => +(((s.by_day[p] || []).find((r: DayRow) => r.day === l)?.revenue ?? 0) / div).toFixed(3)),
           borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0.3, pointRadius: 2, fill: false })) },
       options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-        scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+        scales: { y: { title: { display: true, text: unitC }, ticks: { color: C.muted }, grid: { color: C.border } },
                   x: { ticks: { color: C.muted, maxTicksLimit: 12 }, grid: { display: false } } },
         plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
     } as any
@@ -236,13 +261,18 @@ const { canvas: cCmp } = useChart(() => {
   if (!d?.months?.length || !d?.series) return null
   const people = Object.keys(d.series)
   if (!people.length) return null
+  const allVals = people.flatMap((p: string) => (d.series[p] || []).map(x => Math.abs(x.revenue)))
+  const useT = allVals.length > 0 && Math.max(...allVals, 0) < 1e6
+  const div = useT ? 1e3 : 1e6
+  const unitC = useT ? 'тыс ₽' : 'млн ₽'
+  const lbl = (iso: string) => (d.gran === 'month' ? iso : shortDay(iso)) // ось-месяцев-или-недель-датой
   return {
     type: 'line',
-    data: { labels: d.months,
-      datasets: people.map((p, i) => ({ label: shortName(p), data: (d.series[p] || []).map(x => +(x.revenue / 1e6).toFixed(2)), borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0.3, pointRadius: 2, fill: false })) },
+    data: { labels: d.months.map(lbl),
+      datasets: people.map((p, i) => ({ label: shortName(p), data: (d.series[p] || []).map(x => +(x.revenue / div).toFixed(3)), borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0.3, pointRadius: 2, fill: false })) },
     options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-      scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
-                x: { ticks: { color: C.muted, maxTicksLimit: 12 }, grid: { display: false } } },
+      scales: { y: { title: { display: true, text: unitC }, ticks: { color: C.muted }, grid: { color: C.border } },
+                x: { ticks: { color: C.muted, maxTicksLimit: 12, maxRotation: 45 }, grid: { display: false } } },
       plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
   } as any
 }, depC as unknown as Ref<unknown>)
@@ -321,13 +351,13 @@ watch(pChip, (v) => { months.value = v })
     </div>
     <div class="chart-box" style="height: 300px"><canvas ref="cTop"></canvas></div>
     <table>
-      <thead><tr><th>Ответственный</th><th class="num">Сделок</th><th class="num">В-среднем/мес</th><th class="num">Выручка</th></tr></thead>
+      <thead><tr><th>Ответственный</th><th class="num">Сделок</th><th class="num" title="Выручка-за-период ÷ кол-во-месяцев-в-периоде (средняя-по-месяцам-с-отгрузками)">Сред. выручка/мес</th><th class="num">Выручка за период</th></tr></thead>
       <tbody>
         <tr v-for="s in (sum.data.value?.summary ?? [])" :key="s.person" class="click" @click="pickPerson(s.person)">
           <td>{{ s.person }}</td>
           <td class="num">{{ fmtInt(s.deals_total) }}</td>
-          <td class="num">{{ s.deals_per_month.toFixed(1) }}</td>
-          <td class="num">{{ fmtMln(s.revenue_mln * 1e6) }}</td>
+          <td class="num" title="средняя-выручка-в-месяцы-с-отгрузками (за-выбранный-период)">{{ moneyAuto(s.avg_month_revenue_mln * 1e6) }}</td>
+          <td class="num">{{ moneyAuto(s.revenue_mln * 1e6) }}</td>
         </tr>
         <tr v-if="!sum.loading.value && !sum.data.value?.summary?.length"><td colspan="4" class="empty">Нет-отгруженных-заказов-с-ответственным-за-период</td></tr>
       </tbody>
@@ -342,13 +372,13 @@ watch(pChip, (v) => { months.value = v })
     </div>
     <div class="chart-box" style="height: 320px"><canvas ref="cPerson"></canvas></div>
     <table v-if="detailRows.length">
-      <thead><tr><th>{{ detail.data.value?.gran === 'day' ? 'День' : (detail.data.value?.gran === 'week' ? 'Неделя (с' : 'Месяц') }}</th><th class="num">Сделок</th><th class="num">Выручка</th><th v-if="detail.data.value?.gran === 'month'" class="num">Средний-чек</th><th v-if="detail.data.value?.gran === 'month'" class="num">Год-к-году</th></tr></thead>
+      <thead><tr><th>{{ detail.data.value?.gran === 'day' ? 'День' : (detail.data.value?.gran === 'week' ? 'Неделя (с' : 'Месяц') }}</th><th class="num">Сделок</th><th class="num">Выручка</th><th v-if="detail.data.value?.gran === 'month'" class="num">Средний чек, ₽</th><th v-if="detail.data.value?.gran === 'month'" class="num">Год-к-году</th></tr></thead>
       <tbody>
         <tr v-for="m in detailRows" :key="m.period">
           <td>{{ detail.data.value?.gran === 'month' ? fmtShortMonth(m.period) : (detail.data.value?.gran === 'week' ? m.period + ')' : m.period) }}</td>
           <td class="num">{{ fmtInt(m.deals) }}</td>
-          <td class="num">{{ fmtMln(m.revenue) }}</td>
-          <td class="num" v-if="detail.data.value?.gran === 'month'">{{ fmtMln((m as any).avg_check) }}</td>
+          <td class="num">{{ moneyAuto(m.revenue) }}</td>
+          <td class="num" v-if="detail.data.value?.gran === 'month'">{{ moneyAuto((m as any).avg_check) }}</td>
           <td class="num" v-if="detail.data.value?.gran === 'month'">—</td>
         </tr>
       </tbody>
@@ -370,7 +400,7 @@ watch(pChip, (v) => { months.value = v })
       <thead><tr><th>Ответственный</th><th class="num">Выручка-посл-мес</th><th class="num">Сделок</th><th class="num">к-прошл-мес</th><th class="num">Год-к-году</th></tr></thead>
       <tbody>
         <tr v-for="r in cmpTable" :key="r.person">
-          <td>{{ r.person }}</td><td class="num">{{ fmtMln(r.rev) }}</td><td class="num">{{ fmtInt(r.deals) }}</td>
+          <td>{{ r.person }}</td><td class="num">{{ moneyAuto(r.rev) }}</td><td class="num">{{ fmtInt(r.deals) }}</td>
           <td class="num"><span :class="r.dMoM >= 0 ? 'up' : 'down'">{{ r.dMoM >= 0 ? '▲' : '▼' }} {{ Math.abs(r.dMoM) }}%</span></td>
           <td class="num"><span :class="r.dYoY >= 0 ? 'up' : 'down'">{{ r.dYoY >= 0 ? '▲' : '▼' }} {{ Math.abs(r.dYoY) }}%</span></td>
         </tr>
