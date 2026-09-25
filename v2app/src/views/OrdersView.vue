@@ -216,6 +216,7 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
         <template v-else>
           <h2>{{ dossier.data.value.head?.number }} · {{ fmtMoney(dossier.data.value.head?.sum) }}</h2>
           <p class="muted">{{ dossier.data.value.head?.order_status }} · {{ dossier.data.value.head?.contractor_name }} · {{ dossier.data.value.head?.branch_name }} · {{ fmtDate(dossier.data.value.head?.order_date) }}</p>
+          <p v-if="dossier.data.value.head?.demand_responsible" class="muted">Ответственный: {{ dossier.data.value.head.demand_responsible }}</p>
           <h3>Позиции</h3>
           <table>
             <thead><tr><th>Наименование</th><th class="num">Кол-во</th><th class="num">Цена</th><th class="num">Сумма</th></tr></thead>

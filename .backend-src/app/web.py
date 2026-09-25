@@ -371,7 +371,7 @@ def order_full(order_id: int):
     head = q1("""
         SELECT id, order_id, number, order_date, ordered_date, planned_shipment_date, planned_delivery_date,
                shipment_date, order_status, payment_status, sale_status,
-               contractor_id_1c, contractor_name, branch_name, agreement_name,
+               contractor_id_1c, contractor_name, branch_name, agreement_name, demand_responsible,
                sum, weight, comment,
                demand_id, demand_status, demand_date, demand_sum, demand_delivery_cost, demand_delivery_type,
                demand_address, demand_is_delivery
