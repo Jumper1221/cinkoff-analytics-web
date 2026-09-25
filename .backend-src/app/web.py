@@ -962,7 +962,9 @@ def people_summary(months: int = 12, ship_from: str = "", ship_to: str = ""):
 @app.get("/api/people/monthly")
 def people_monthly(person: str, months: int = 24, ship_from: str = "", ship_to: str = ""):
     """Помесячные-продажи-одного-человека: заказы, выручка, средний-чек.
-    Плюс-тот-же-месяц-прошлого-года (для-«год-к-году»)."""
+    Плюс-тот-же-месяц-прошлого-года (для-«год-к-году»).
+    gran: месяц≤1 → ПО-ДНЯМ, ≤6 → ПО-НЕДЕЛЯМ (промежуточные-точки-графика), дальше → месяцы.
+    monthly-всегда-помесячно (для-таблицы), series —- в-грануляре gran (для-графика)."""
     months = max(1, min(60, months))
     dsql, dargs = _days_clause(ship_from, ship_to)
     cur = q(f"""
@@ -988,38 +990,90 @@ def people_monthly(person: str, months: int = 24, ship_from: str = "", ship_to: 
           AND shipment_date < (CURRENT_DATE - (%s || ' months')::interval)
         GROUP BY 1 ORDER BY 1
     """, (person, str(months), str(months)))
-    return {"person": person, "months": months, "monthly": cur, "prev_year_same_month": prev_year}
+    # гранулярная-разбивка-для-ГРАФИКА: месяц→дни, квартал/полгода→недели, дальше→месяцы
+    gran = "day" if months <= 1 else ("week" if months <= 6 else "month")
+    if gran == "day":
+        bucket = "TO_CHAR(shipment_date, 'YYYY-MM-DD')"
+    elif gran == "week":
+        bucket = "TO_CHAR(date_trunc('week', shipment_date), 'YYYY-MM-DD')"  # ISO-неделя, старт-пн
+    else:
+        bucket = "TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM')"
+    series = q(f"""
+        SELECT {bucket} AS period,
+               COUNT(*)::int AS deals,
+               COALESCE(SUM(sum), 0)::float8 AS revenue
+        FROM orders
+        WHERE shipment_date IS NOT NULL AND demand_responsible = %s
+          AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+          {dsql}
+        GROUP BY 1 ORDER BY 1
+    """, tuple([person, str(months)] + dargs))
+    return {"person": person, "months": months, "gran": gran, "series": series,
+            "monthly": cur, "prev_year_same_month": (prev_year if gran == "month" else [])}
 
 
 @app.get("/api/people/compare")
 def people_compare(people: str, months: int = 12, ship_from: str = "", ship_to: str = ""):
-    """Сравнение-нескольких-людей-помесячно (до-5). people=Иван;Мария;..."""
+    """Сравнение-нескольких-людей (до-5). people=Иван;Мария;...
+    грануляр-графика: месяц≤1 → ПО-ДНЯМ, ≤6 → ПО-НЕДЕЛЯМ, дальше → месяцы (поля-«month»-несут-период)."""
     months = max(1, min(60, months))
     dsql, dargs = _days_clause(ship_from, ship_to)
     persons = [p.strip() for p in (people or "").split(";") if p.strip()][:5]
     if not persons:
-        return {"persons": [], "series": {}}
+        return {"gran": "month", "months": [], "series": {}}
+    gran = "day" if months <= 1 else ("week" if months <= 6 else "month")
+    if gran == "day":
+        bucket = "TO_CHAR(shipment_date, 'YYYY-MM-DD')"
+    elif gran == "week":
+        bucket = "TO_CHAR(date_trunc('week', shipment_date), 'YYYY-MM-DD')"
+    else:
+        bucket = "TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM')"
+    extra_date = "AND shipment_date <= CURRENT_DATE" if gran != "month" else ""  # план-за-горизонтом-не-рисуем
     rows = q(f"""
         SELECT demand_responsible AS person,
-               TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM') AS month,
+               {bucket} AS month,
                COUNT(*)::int AS deals,
                COALESCE(SUM(sum), 0)::float8 AS revenue
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = ANY(%s)
           AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')  -- только-прошедшие-месяцы (сезон-уже-в-буд-есть-плановые-отгрузки)
           AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+          {extra_date}
           {dsql}
         GROUP BY 1, 2 ORDER BY 2, 1
     """, tuple([persons, str(months)] + dargs))
     series: dict = {}
     months_axis = sorted({r["month"] for r in rows})
-    _today = __import__("datetime").date.today().strftime("%Y-%m")
-    months_axis = [mth for mth in months_axis if mth <= _today]
+    _today = __import__("datetime").date.today().strftime("%Y-%m" if gran == "month" else "%Y-%m-%d")
+    if gran == "month":
+        months_axis = [mth for mth in months_axis if mth <= _today]
     for p_ in persons:
         m = {r["month"]: r for r in rows if r["person"] == p_}
         series[p_] = [{"month": mth, "deals": m.get(mth, {}).get("deals", 0),
                        "revenue": m.get(mth, {}).get("revenue", 0)} for mth in months_axis]
-    return {"months": months_axis, "series": series}
+    # месячная-ось-ДЛЯ-ТАБЛИЦЫ-дельт (посл-месяц/MoM/YoY-—-всегда-помесячно, независимо-от-грануляра-графика):
+    mrows = q(f"""
+        SELECT demand_responsible AS person,
+               TO_CHAR(date_trunc('month', shipment_date), 'YYYY-MM') AS month,
+               COUNT(*)::int AS deals,
+               COALESCE(SUM(sum), 0)::float8 AS revenue
+        FROM orders
+        WHERE shipment_date IS NOT NULL AND demand_responsible = ANY(%s)
+          AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
+          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+          {dsql}
+        GROUP BY 1, 2 ORDER BY 2, 1
+    """, tuple([persons, str(months)] + dargs))
+    ms_axis = sorted({r["month"] for r in mrows})
+    ms_axis = [mth for mth in ms_axis if mth <= __import__("datetime").date.today().strftime("%Y-%m")]
+    series_m: dict = {}
+    for p_ in persons:
+        m = {r["month"]: r for r in mrows if r["person"] == p_}
+        series_m[p_] = [{"month": mth, "deals": m.get(mth, {}).get("deals", 0),
+                         "revenue": m.get(mth, {}).get("revenue", 0)} for mth in ms_axis]
+    return {"gran": gran, "months": months_axis, "series": series,
+            "months_monthly": ms_axis, "series_monthly": series_m}
 
 
 @app.get("/healthz")

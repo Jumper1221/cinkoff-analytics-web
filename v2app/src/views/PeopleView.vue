@@ -18,7 +18,8 @@ interface MonthResp {
   monthly: { month: string; deals: number; revenue: number; avg_check: number }[]
   prev_year_same_month: { pm: string; deals: number; revenue: number; avg_check: number }[]
 }
-interface CompareResp { months: string[]; series: Record<string, { month: string; deals: number; revenue: number }[]> }
+interface CompareResp { gran?: 'day' | 'week' | 'month'; months: string[]; series: Record<string, MonthDeal[]>; months_monthly?: string[]; series_monthly?: Record<string, MonthDeal[]> }
+interface MonthDeal { month: string; deals: number; revenue: number }
 interface DayRow { day: string; deals: number; revenue: number }
 
 const qsSum = computed(() => {
@@ -34,7 +35,8 @@ const detail = useApi<MonthRespExtra>(() => (selected.value ? (() => {
   if (dayTo.value) p.set('ship_to', dayTo.value)
   return `/api/people/monthly?${p.toString()}`
 })() : ''), false)
-type MonthRespExtra = MonthResp
+interface GranRow { month: string; deals: number; revenue: number; avg_check?: number }
+type MonthRespExtra = MonthResp & { gran?: 'day' | 'week' | 'month'; series?: GranRow[] }
 interface MonthResp { person: string; months: number; monthly: MonthRow[]; prev_year_same_month: PYRow[] }
 interface MonthRow { month: string; deals: number; revenue: number; avg_check: number }
 interface PYRow { pm: string; deals: number; revenue: number; avg_check: number }
@@ -49,6 +51,7 @@ const cmpApi = useApi<CompareResp>(() => (cmpMode.value && cmpPeople.value.lengt
 })() : ''), false)
 interface CompareRespX { months: string[]; series: Record<string, MonthDeal[]> }
 interface MonthDeal { month: string; deals: number; revenue: number }
+interface DayRow { day: string; deals: number; revenue: number }
 
 // ВАЖНО: dep-графиков-должен-покрывать-ВСЁ,-что-читает-функция-рисования:
 // в-дневном-режиме-графики-2/3-рисуются-из-sum.data.by_day (+презеты-дней) —- раньше-dep-их-не-включал,
@@ -155,23 +158,31 @@ const { canvas: cPerson } = useChart(() => {
       plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
     } as any
   }
-  if (!d?.monthly?.length) return null
+  // месячный-режим (gran-из-бэка: month=помесячно+YoY, week=понедельно, day=подневно; presetDays-перекрыт-веткой-выше)
+  if (!d?.series?.length) return null
   const C = chartColors()
-  const labels = d.monthly.map((m: MonthRow) => m.month)
-  const pyMap: Record<string, MonthRow> = {}
-  for (const r of (d.prev_year_same_month ?? []) as PYRow[]) pyMap[r.pm] = { month: r.pm, deals: r.deals, revenue: r.revenue, avg_check: r.avg_check }
+  const ser = d.series as MonthDeal[]
+  const unit = d.gran === 'day' ? 'млн/день' : (d.gran === 'week' ? 'млн/нед' : 'млн')
+  const shortP = (p: string) => (d.gran === 'month' ? fmtShortMonth(p) : (p ? p.slice(8) + '.' + p.slice(5, 7) : '—'))
+  const labels = ser.map((m) => shortP(m.month))
+  const revData = ser.map((m) => +(m.revenue / 1e6).toFixed(2))
+  const dealsData = ser.map((m) => m.deals)
+  const datasets: any[] = [
+    { type: 'bar', label: 'Выручка, ' + unit, data: revData, backgroundColor: C.accent + 'CC', borderRadius: 3, yAxisID: 'y' },
+    { type: 'line', label: 'Сделок', data: dealsData, borderColor: C.ok, tension: 0.3, pointRadius: 2, yAxisID: 'y2' },
+  ]
+  if (d.gran === 'month') { // YoY-пунктир-имеет-смысл-только-в-помесячном-режиме
+    const pyMap: Record<string, MonthRow> = {}
+    for (const r of (d.prev_year_same_month ?? []) as PYRow[]) pyMap[r.pm] = { month: r.pm, deals: r.deals, revenue: r.revenue, avg_check: r.avg_check }
+    datasets.push({ type: 'line', label: 'Тот-же-месяц-год-назад (млн)', data: ser.map((m) => +((pyMap[m.month]?.revenue ?? 0) / 1e6).toFixed(2)), borderColor: C.muted, borderDash: [5, 4], tension: 0.25, pointRadius: 1.5, yAxisID: 'y' })
+  }
   return {
     type: 'bar',
-    data: { labels,
-      datasets: [
-        { type: 'bar', label: 'Выручка, млн', data: d.monthly.map((m: MonthRow) => +(m.revenue / 1e6).toFixed(2)), backgroundColor: C.accent + 'CC', borderRadius: 3, yAxisID: 'y' },
-        { type: 'line', label: 'Сделок', data: d.monthly.map((m: MonthRow) => m.deals), borderColor: C.ok, tension: 0.3, pointRadius: 2, yAxisID: 'y2' },
-        { type: 'line', label: 'Тот-же-месяц-год-назад (млн)', data: labels.map(l => +((pyMap[l]?.revenue ?? 0) / 1e6).toFixed(2)), borderColor: C.muted, borderDash: [5, 4], tension: 0.25, pointRadius: 1.5, yAxisID: 'y' },
-      ] },
+    data: { labels, datasets },
     options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
       scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
                 y2: { position: 'right', ticks: { color: C.muted }, grid: { drawOnChartArea: false } },
-                x: { ticks: { color: C.muted, maxTicksLimit: 12 }, grid: { display: false } } },
+                x: { ticks: { color: C.muted, maxTicksLimit: 14, maxRotation: 45 }, grid: { display: false } } },
       plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
   } as any
 }, depD as Ref<unknown>)
@@ -239,27 +250,34 @@ const { canvas: cCmp } = useChart(() => {
 // сравнение-таблица: последний-месяц-vs-предыдущий-и-год-к-году
 const cmpTable = computed(() => {
   const d = cmpApi.data.value as CompareResp | null
-  if (!d?.months?.length) return []
-  // последний-ПОЛНЫЙ-месяц = прошлый-месяц от-сегодня (сейчас-сент-2026-недокатился —- берём-август)
+  // ДЕЛЬТЫ-ВСЕГДА-ПО-МЕСЯЦАМ (months_monthly/series_monthly от-бэка; при-gran=month-это-сами-поля-графика)
+  const mAxis = d?.months_monthly?.length ? d.months_monthly : (d?.months ?? [])
+  const mSer = (p: string) => (d?.series_monthly?.[p] ?? d?.series?.[p] ?? [])
+  if (!mAxis.length) return []
   const now = new Date()
   const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const lastIdx = d.months.indexOf(curYM) >= 0 ? d.months.indexOf(curYM) : d.months.length - 1
+  const lastIdx = mAxis.indexOf(curYM) >= 0 ? mAxis.indexOf(curYM) : mAxis.length - 1
   if (lastIdx < 1) return []
-  const lm = d.months[lastIdx]
-  const prev = d.months[lastIdx - 1] || lm
-  const lmPrevYear = (() => { // тот-же-месяц-год-назад
+  const lm = mAxis[lastIdx]
+  const prev = mAxis[lastIdx - 1] || lm
+  const lmPrevYear = (() => {
     const [y, m] = lm.split('-').map(Number)
     return `${y - 1}-${String(m).padStart(2, '0')}`
   })()
-  // если-года-назад-месяца-нет-в-оси (короткое-окно) —- показываем-прочерк, а-не-«+100%»
-  const hasPY = (p: string) => (d.series[p] || []).some(x => x.month === lmPrevYear && x.deals + x.revenue > 0)
-  return Object.keys(d.series).map(p => {
-    const find = (mm: string) => (d.series[p] || []).find(x => x.month === mm)
+  const hasPY = (p: string) => mSer(p).some(x => x.month === lmPrevYear && x.deals + x.revenue > 0)
+  return Object.keys(d?.series ?? {}).map(p => {
+    const find = (mm: string) => mSer(p).find(x => x.month === mm)
     const a = (find(lm)?.revenue ?? 0), b = (find(prev)?.revenue ?? 0), c = (find(lmPrevYear)?.revenue ?? 0)
     const dMoM = b ? +(((a - b) / b) * 100).toFixed(0) : (a ? 100 : 0)
     const dYoY = c ? +(((a - c) / c) * 100).toFixed(0) : (hasPY(p) ? 0 : (a ? 100 : 0))
     return { person: p, rev: a, deals: find(lm)?.deals ?? 0, dMoM, dYoY, lm: lm !== curYM || !a ? lm : prev }
   }).sort((x, y) => y.rev - x.rev)
+})
+
+const detailRows = computed(() => {
+  const d = detail.data.value as any
+  if (d?.gran && d.gran !== 'month') return (d.series ?? []).map((r: any) => ({ period: r.month, deals: r.deals, revenue: r.revenue }))
+  return (d?.monthly ?? []).map((m: any) => ({ period: m.month, deals: m.deals, revenue: m.revenue, avg_check: m.avg_check }))
 })
 
 const shortDay = (iso: string) => (iso ? iso.slice(8) + '.' + iso.slice(5, 7) : '—')  // 25.09
@@ -323,16 +341,15 @@ watch(pChip, (v) => { months.value = v })
       <button class="chip-ghost" @click="cmpMode = true">← к-сравнению</button>
     </div>
     <div class="chart-box" style="height: 320px"><canvas ref="cPerson"></canvas></div>
-    <table v-if="detail.data.value?.monthly?.length">
-      <thead><tr><th>Месяц</th><th class="num">Сделок</th><th class="num">Выручка</th><th class="num">Средний-чек</th><th class="num">Год-к-году</th></tr></thead>
+    <table v-if="detailRows.length">
+      <thead><tr><th>{{ detail.data.value?.gran === 'day' ? 'День' : (detail.data.value?.gran === 'week' ? 'Неделя (с' : 'Месяц') }}</th><th class="num">Сделок</th><th class="num">Выручка</th><th v-if="detail.data.value?.gran === 'month'" class="num">Средний-чек</th><th v-if="detail.data.value?.gran === 'month'" class="num">Год-к-году</th></tr></thead>
       <tbody>
-        <tr v-for="(m, i) in detail.data.value.monthly" :key="m.month">
-          <td>{{ m.month.slice(0, 7) }}</td>
+        <tr v-for="m in detailRows" :key="m.period">
+          <td>{{ detail.data.value?.gran === 'month' ? fmtShortMonth(m.period) : (detail.data.value?.gran === 'week' ? m.period + ')' : m.period) }}</td>
           <td class="num">{{ fmtInt(m.deals) }}</td>
           <td class="num">{{ fmtMln(m.revenue) }}</td>
-          <td class="num">{{ fmtMln(m.avg_check) }}</td>
-          <td class="num" v-if="detail.data.value.prev_year_same_month?.length">—</td>
-          <td class="num" v-else>—</td>
+          <td class="num" v-if="detail.data.value?.gran === 'month'">{{ fmtMln((m as any).avg_check) }}</td>
+          <td class="num" v-if="detail.data.value?.gran === 'month'">—</td>
         </tr>
       </tbody>
     </table>
