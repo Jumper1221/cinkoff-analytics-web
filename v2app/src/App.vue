@@ -21,6 +21,7 @@ const nav = [
   { to: '/forecast', label: 'Прогноз' },
   { to: '/branches', label: 'Точки' },
   { to: '/heatmap', label: 'Тепловая' },
+  { to: '/people', label: 'Люди' },
 ]
 </script>
 

@@ -17,13 +17,13 @@ describe('форматтеры', () => {
 })
 
 describe('App-маунт', () => {
-  it('сайдбар 9 пунктов + рендер без ошибок', async () => {
+  it('сайдбар 10 пунктов + рендер без ошибок', async () => {
     const router = createRouter({ history: createWebHistory('/v2/'), routes: [
       { path: '/', component: { template: '<div/>' } },
     ]})
     await router.push('/')
     const w = mount(App, { global: { plugins: [createPinia(), router] } })
-    expect(w.findAll('.nav-item').length).toBe(9)
+    expect(w.findAll('.nav-item').length).toBe(10)
     expect(w.text()).toContain('Cinkoff Analytics')
   })
 })

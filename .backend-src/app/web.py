@@ -877,6 +877,102 @@ def branches():
     return q("SELECT id_1c, name, address, latitude, longitude FROM branches ORDER BY name")
 
 
+@app.get("/api/people/summary")
+def people_summary(months: int = 12):
+    """Сводка-по-ответственным: продажи-= отгруженные-заказы (shipment_date-задан).
+    Таблица-за-послед-N-месяцев + динамика-к-прошлому-году-в-тот-же-месяц."""
+    months = max(3, min(60, months))
+    rows = q("""
+        WITH shipped AS (
+            SELECT demand_responsible AS person,
+                   date_trunc('month', shipment_date) AS m,
+                   COUNT(*)::int AS deals,
+                   COALESCE(SUM(sum), 0)::float8 AS revenue
+            FROM orders
+            WHERE shipment_date IS NOT NULL AND demand_responsible IS NOT NULL AND demand_responsible <> ''
+              AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+            GROUP BY 1, 2
+        )
+        SELECT person,
+               SUM(deals)::int                        AS deals_total,
+               ROUND(SUM(revenue)::numeric / 1e6, 2)::float8 AS revenue_mln,
+               ROUND(AVG(deals)::numeric, 1)::float8  AS deals_per_month,
+               MIN(m)::text                           AS first_month
+        FROM shipped GROUP BY 1
+        ORDER BY SUM(revenue) DESC
+    """, (str(months),))
+    # MoM-динамика-последнего-месяца-и-среднее-по-персоне-для-тренда:
+    trend = q("""
+        SELECT demand_responsible AS person,
+               date_trunc('month', shipment_date)::text AS month,
+               COUNT(*)::int AS deals,
+               COALESCE(SUM(sum), 0)::float8 AS revenue
+        FROM orders
+        WHERE shipment_date IS NOT NULL AND demand_responsible IS NOT NULL AND demand_responsible <> ''
+          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+        GROUP BY 1, 2 ORDER BY 2, 1
+    """, (str(months),))
+    by_person: dict = {}
+    for r in trend:
+        by_person.setdefault(r["person"], []).append({"month": r["month"][:7], "deals": r["deals"], "revenue": r["revenue"]})
+    return {"period_months": months, "summary": rows, "by_month": by_person}
+
+
+@app.get("/api/people/monthly")
+def people_monthly(person: str, months: int = 24):
+    """Помесячные-продажи-одного-человека: заказы, выручка, средний-чек.
+    Плюс-тот-же-месяц-прошлого-года (для-«год-к-году»)."""
+    months = max(3, min(60, months))
+    cur = q("""
+        SELECT date_trunc('month', shipment_date)::text AS month,
+               COUNT(*)::int AS deals,
+               COALESCE(SUM(sum), 0)::float8 AS revenue,
+               COALESCE(AVG(sum), 0)::float8 AS avg_check
+        FROM orders
+        WHERE shipment_date IS NOT NULL AND demand_responsible = %s
+          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+        GROUP BY 1 ORDER BY 1
+    """, (person, str(months)))
+    # прошлый-год-в-то-же-месяц (за-вычетом-текущего-окна):
+    prev_year = q("""
+        SELECT date_trunc('month', shipment_date - interval '1 year')::text AS pm,
+               COUNT(*)::int AS deals, COALESCE(SUM(sum), 0)::float8 AS revenue,
+               COALESCE(AVG(sum), 0)::float8 AS avg_check
+        FROM orders
+        WHERE shipment_date IS NOT NULL AND demand_responsible = %s
+          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval) - interval '1 year'
+          AND shipment_date < (CURRENT_DATE - (%s || ' months')::interval)
+        GROUP BY 1 ORDER BY 1
+    """, (person, str(months), str(months)))
+    return {"person": person, "months": months, "monthly": cur, "prev_year_same_month": prev_year}
+
+
+@app.get("/api/people/compare")
+def people_compare(people: str, months: int = 12):
+    """Сравнение-нескольких-людей-помесячно (до-5). people=Иван;Мария;..."""
+    months = max(3, min(60, months))
+    persons = [p.strip() for p in (people or "").split(";") if p.strip()][:5]
+    if not persons:
+        return {"persons": [], "series": {}}
+    rows = q("""
+        SELECT demand_responsible AS person,
+               date_trunc('month', shipment_date)::text AS month,
+               COUNT(*)::int AS deals,
+               COALESCE(SUM(sum), 0)::float8 AS revenue
+        FROM orders
+        WHERE shipment_date IS NOT NULL AND demand_responsible = ANY(%s)
+          AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
+        GROUP BY 1, 2 ORDER BY 2, 1
+    """, (persons, str(months)))
+    series: dict = {}
+    months_axis = sorted({r["month"] for r in rows})
+    for p_ in persons:
+        m = {r["month"]: r for r in rows if r["person"] == p_}
+        series[p_] = [{"month": mth[:7], "deals": m.get(mth, {}).get("deals", 0),
+                       "revenue": m.get(mth, {}).get("revenue", 0)} for mth in months_axis]
+    return {"months": [mth[:7] for mth in months_axis], "series": series}
+
+
 @app.get("/healthz")
 def healthz():
     try:

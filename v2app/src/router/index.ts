@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/forecast', name: 'forecast', component: () => import('../views/ForecastView.vue') },
     { path: '/branches', name: 'branches', component: () => import('../views/BranchesView.vue') },
     { path: '/heatmap', name: 'heatmap', component: () => import('../views/HeatmapView.vue') },
+    { path: '/people', name: 'people', component: () => import('../views/PeopleView.vue') },
   ],
 })
 
