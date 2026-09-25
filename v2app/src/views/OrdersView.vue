@@ -62,7 +62,8 @@ const rangeLabel = computed(() => {
   return 'все-время'
 })
 const manualActive = computed(() => monthManual.value || yearManual.value)
-function resetRange() { fromDate.value = ''; toDate.value = ''; monthManual.value = false; yearManual.value = false; fmMonth.value = ''; fmYear.value = ''; popOpen.value = false }
+const hasDateFilter = computed(() => !!(fromDate.value || toDate.value))
+function resetRange() { fromDate.value = ''; toDate.value = ''; monthManual.value = false; yearManual.value = false; fmMonth.value = ''; fmYear.value = ''; cuFrom.value = ''; cuTo.value = ''; popOpen.value = false }
 function setCustom() { if (cuFrom.value && cuTo.value) { setRange(new Date(cuFrom.value), new Date(cuTo.value)); monthManual.value = false; yearManual.value = false; popOpen.value = false } }
 const cuFrom = ref(''); const cuTo = ref('')  // свой-диапазон-в-поповере
 
@@ -180,7 +181,7 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
           <button class="seg-btn" :class="{ on: fromDate === iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) && !!toDate }" @click="monthThis">Месяц</button>
         </div>
         <button class="btn-range" :class="{ act: manualActive }" @click.stop="togglePop" title="Месяц / год / свой-диапазон">📅 {{ rangeLabel }} <span class="caret">▾</span></button>
-        <button v-if="manualActive" class="x-reset" @click="resetRange" title="Сбросить-период">✕</button>
+        <button v-if="hasDateFilter" class="x-reset" @click="resetRange" title="Сбросить-период">✕</button>
 
         <div v-if="popOpen" class="period-pop" @click.stop>
           <div class="pop-col">
@@ -212,7 +213,7 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
         </div>
       </div>
       <span class="qf-total">{{ totalShown ? totalShown.toLocaleString('ru-RU') + ' зак.' : '—' }}</span>
-      <button v-if="hasFilter" class="chip-ghost" @click="clearAll">✕ сброс</button>
+      <button v-if="hasFilter" class="chip-ghost" @click="clearAll" title="Сбросить-все-фильтры (включая-поиск-и-статус)">✕ сброс</button>
     </div>
 
     <!-- строка 2: точные фильтры -->
@@ -232,11 +233,6 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
         <option>Передан в производство</option><option>В пути</option><option>Рассматривается</option>
         <option>Планируется отгрузка</option><option>Передан на комплектацию</option>
       </select>
-      <div class="datebox">
-        <input v-model="fromDate" type="date" class="f-date2" title="с даты" />
-        <span class="date-sep">→</span>
-        <input v-model="toDate" type="date" class="f-date2" title="по дату" />
-      </div>
       <a class="btn-csv" :href="csvUrl" title="Скачать выборку как CSV (до 5000 строк)">⬇ CSV</a>
     </div>
 
@@ -315,9 +311,7 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
   border-radius: 9px; background: var(--bg); color: var(--text); font-size: 13.5px; }
 .f-select { padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px;
   background: var(--bg); color: var(--text); font-size: 13.5px; max-width: 200px; }
-.datebox { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); overflow: hidden; }
-.f-date2, .f-date2input { border: none; background: transparent; color: var(--text); padding: 6px 8px; font-size: 13px; }
-.date-sep { color: var(--muted); }
+.f-date2, .f-date2input { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); padding: 5px 8px; font-size: 12.5px; }
 .btn-csv { display: inline-flex; align-items: center; gap: 5px; padding: 7px 15px; margin-left: auto;
   background: var(--accent); color: #fff; border-radius: 9px; font-weight: 600; font-size: 13px;
   border: none; cursor: pointer; }
