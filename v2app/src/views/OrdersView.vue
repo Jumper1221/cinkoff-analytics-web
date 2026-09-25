@@ -172,6 +172,7 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
   <div class="panel">
     <!-- строка 1: быстрые фильтры -->
     <div class="qf-row">
+      <span class="qf-title">Заказы за период</span>
       <div class="qf-group" style="position: relative;">
         <div class="seg">
           <button class="seg-btn" :class="{ on: fromDate === iso(new Date()) && toDate === fromDate }" @click="today">Сегодня</button>
@@ -297,6 +298,8 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
 
 <style scoped>
 .qf-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.qf-title { font-size: 13px; font-weight: 600; color: var(--muted); }
+.qf-row .qf-group { margin-left: auto; }  /* период-плашка-—-в-П-Р-А-В-У-Ю-часть, как-в-«Людях» */
 .qf-group { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { border: 1px solid var(--line); background: var(--panel); color: var(--text);
   border-radius: 999px; padding: 5px 13px; font-size: 13px; cursor: pointer; transition: all .12s; }
@@ -304,7 +307,7 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .chip-ghost { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 4px 6px; }
 .chip-ghost:hover { color: var(--err); }
-.qf-total { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.qf-total { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .filters2 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .f-search2 { flex: 1 1 210px; min-width: 180px; padding: 7px 11px; border: 1px solid var(--line);
