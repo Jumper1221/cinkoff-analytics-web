@@ -877,6 +877,13 @@ def branches():
     return q("SELECT id_1c, name, address, latitude, longitude FROM branches ORDER BY name")
 
 
+def TO_CHAR_TODAY() -> str:
+    """Тек-месяц-в-форме-YYYY-MM (у-БД-и-так-есть, но-в-Пи-Т-О-НЕ-м-О-Ж-Е-Т-не-бы-Т-Ь-х-ВО-СТ-А-).
+    Используется-для-отс-Е-Ч-Е-Н-И-Я-буд-ущих-плановых-отгрузок-в-«посл-месяц»."""
+    import datetime as _dt
+    return _dt.date.today().strftime("%Y-%m")
+
+
 @app.get("/api/people/summary")
 def people_summary(months: int = 12):
     """Сводка-по-ответственным: продажи-= отгруженные-заказы (shipment_date-задан).
@@ -890,6 +897,7 @@ def people_summary(months: int = 12):
                    COALESCE(SUM(sum), 0)::float8 AS revenue
             FROM orders
             WHERE shipment_date IS NOT NULL AND demand_responsible IS NOT NULL AND demand_responsible <> ''
+              AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
               AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
             GROUP BY 1, 2
         )
@@ -909,6 +917,7 @@ def people_summary(months: int = 12):
                COALESCE(SUM(sum), 0)::float8 AS revenue
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible IS NOT NULL AND demand_responsible <> ''
+          AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
           AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
         GROUP BY 1, 2 ORDER BY 2, 1
     """, (str(months),))
@@ -930,6 +939,7 @@ def people_monthly(person: str, months: int = 24):
                COALESCE(AVG(sum), 0)::float8 AS avg_check
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = %s
+          AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')
           AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
         GROUP BY 1 ORDER BY 1
     """, (person, str(months)))
@@ -961,11 +971,14 @@ def people_compare(people: str, months: int = 12):
                COALESCE(SUM(sum), 0)::float8 AS revenue
         FROM orders
         WHERE shipment_date IS NOT NULL AND demand_responsible = ANY(%s)
+          AND TO_CHAR(shipment_date, 'YYYY-MM') <= TO_CHAR(CURRENT_DATE, 'YYYY-MM')  -- только-прошедшие-месяцы (сезон-уже-в-буд-есть-плановые-отгрузки)
           AND shipment_date >= (CURRENT_DATE - (%s || ' months')::interval)
         GROUP BY 1, 2 ORDER BY 2, 1
     """, (persons, str(months)))
     series: dict = {}
     months_axis = sorted({r["month"] for r in rows})
+    _today = __import__("datetime").date.today().strftime("%Y-%m")
+    months_axis = [mth for mth in months_axis if mth <= _today]
     for p_ in persons:
         m = {r["month"]: r for r in rows if r["person"] == p_}
         series[p_] = [{"month": mth, "deals": m.get(mth, {}).get("deals", 0),

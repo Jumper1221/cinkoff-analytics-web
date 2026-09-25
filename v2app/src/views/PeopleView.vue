@@ -119,18 +119,25 @@ const { canvas: cCmp } = useChart(() => {
 const cmpTable = computed(() => {
   const d = cmpApi.data.value as CompareResp | null
   if (!d?.months?.length) return []
-  const lm = d.months[d.months.length - 1]
-  const prev = d.months[d.months.length - 2] || lm
+  // последний-ПОЛНЫЙ-месяц = прошлый-месяц от-сегодня (сейчас-сент-2026-недокатился —- берём-август)
+  const now = new Date()
+  const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const lastIdx = d.months.indexOf(curYM) >= 0 ? d.months.indexOf(curYM) : d.months.length - 1
+  if (lastIdx < 1) return []
+  const lm = d.months[lastIdx]
+  const prev = d.months[lastIdx - 1] || lm
   const lmPrevYear = (() => { // тот-же-месяц-год-назад
     const [y, m] = lm.split('-').map(Number)
     return `${y - 1}-${String(m).padStart(2, '0')}`
   })()
+  // если-года-назад-месяца-нет-в-оси (короткое-окно) —- показываем-прочерк, а-не-«+100%»
+  const hasPY = (p: string) => (d.series[p] || []).some(x => x.month === lmPrevYear && x.deals + x.revenue > 0)
   return Object.keys(d.series).map(p => {
     const find = (mm: string) => (d.series[p] || []).find(x => x.month === mm)
     const a = (find(lm)?.revenue ?? 0), b = (find(prev)?.revenue ?? 0), c = (find(lmPrevYear)?.revenue ?? 0)
     const dMoM = b ? +(((a - b) / b) * 100).toFixed(0) : (a ? 100 : 0)
-    const dYoY = c ? +(((a - c) / c) * 100).toFixed(0) : (a ? 100 : 0)
-    return { person: p, rev: a, deals: find(lm)?.deals ?? 0, dMoM, dYoY }
+    const dYoY = c ? +(((a - c) / c) * 100).toFixed(0) : (hasPY(p) ? 0 : (a ? 100 : 0))
+    return { person: p, rev: a, deals: find(lm)?.deals ?? 0, dMoM, dYoY, lm: lm !== curYM || !a ? lm : prev }
   }).sort((x, y) => y.rev - x.rev)
 })
 
