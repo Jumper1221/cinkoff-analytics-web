@@ -122,6 +122,25 @@ const { canvas: cPerson } = useChart(() => {
     const labels = [...all].sort()
     if (!labels.length) return null
     const C = chartColors()
+    // один-день (Сегодня/Вчера): прямые-линии-уровня-значения (не-«0→X»)
+    if (labels.length === 1) {
+      const day = labels[0]
+      const rev = +(((s.by_day[selected.value] || []).find((r: DayRow) => r.day === day)?.revenue ?? 0) / 1e6).toFixed(3)
+      const deals = ((s.by_day[selected.value] || []).find((r: DayRow) => r.day === day)?.deals ?? 0)
+      return {
+        type: 'line',
+        data: { labels: [shortDay(day) + ' 0ч', shortDay(day) + ' 24ч'],
+          datasets: [
+            { label: `Выручка: ${rev} млн`, data: [rev, rev], borderColor: C.accent, tension: 0, pointRadius: 0, borderWidth: 2, yAxisID: 'y' },
+            { label: `Сделок: ${deals}`, data: [deals, deals], borderColor: C.ok, tension: 0, pointRadius: 0, borderWidth: 2, yAxisID: 'y2', borderDash: [6, 3] },
+          ] },
+        options: { maintainAspectRatio: false,
+          scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+                    y2: { position: 'right', ticks: { color: C.muted }, grid: { drawOnChartArea: false } },
+                    x: { ticks: { color: C.muted }, grid: { display: false } } },
+          plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
+      } as any
+    }
     return {
       type: 'bar',
       data: { labels,
@@ -167,12 +186,29 @@ const { canvas: cCmp } = useChart(() => {
     const all = new Set<string>()
     for (const arr of Object.values(s?.by_day ?? {})) for (const r of (arr as DayRow[])) all.add(r.day)
     if (dayFrom.value && dayTo.value) { // заполнить-пропущенные-дни-ряда
-      for (let d0 = new Date(dayFrom.value + 'T00:00:00'); d0 <= new Date(dayTo.value + 'T23:59:59'); d0.setDate(d0.getDate() + 1)) all.add(isoD(d0))
+      for (let d0 = new Date(dayFrom.value + 'T12:00:00'); d0 <= new Date(dayTo.value + 'T12:00:00'); d0.setDate(d0.getDate() + 1)) all.add(d0.toISOString().slice(0, 10))
     }
     const labels = [...all].sort()
     if (!labels.length) return null
     const people = Object.keys(s?.by_day ?? {}).filter((p: string) => cmpPeople.value.includes(p))
     if (!people.length) return null
+    // один-день (Сегодня/Вчера): линия-«каждому-своя-горизонталь» —- ось-2-точки (Д), значение-константа,-не-«0→X»
+    if (labels.length === 1) {
+      return {
+        type: 'line',
+        data: { labels: [shortDay(labels[0]) + ' 0ч', shortDay(labels[0]) + ' 24ч'],
+          datasets: people.map((p, i) => {
+            const rev = +(((s.by_day[p] || []).find((r: DayRow) => r.day === labels[0])?.revenue ?? 0) / 1e6).toFixed(3)
+            const deals = ((s.by_day[p] || []).find((r: DayRow) => r.day === labels[0])?.deals ?? 0)
+            return { label: `${shortName(p)}: ${rev} млн / ${deals} сд`,
+              data: [rev, rev], borderColor: cmpPalette[i % 6], backgroundColor: cmpPalette[i % 6] + '55', tension: 0, pointRadius: 0, borderWidth: 2, fill: false }
+          }) },
+        options: { maintainAspectRatio: false,
+          scales: { y: { title: { display: true, text: 'млн ₽' }, ticks: { color: C.muted }, grid: { color: C.border } },
+                    x: { ticks: { color: C.muted }, grid: { display: false } } },
+          plugins: { legend: { labels: { color: C.text, boxWidth: 12 } } } },
+      } as any
+    }
     return {
       type: 'line',
       data: { labels: labels.map(shortDay),
