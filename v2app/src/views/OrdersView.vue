@@ -27,6 +27,11 @@ const weekThis = () => {
   setRange(mon, now)
 }
 const monthThis = () => { const n = new Date(); setRange(new Date(n.getFullYear(), n.getMonth(), 1), n) }
+const q3 = () => { const n = new Date(); const a = new Date(n); a.setMonth(n.getMonth() - 3); a.setDate(a.getDate() + 1); setRange(a, n) }
+const q6 = () => { const n = new Date(); const a = new Date(); a.setMonth(n.getMonth() - 6); a.setDate(a.getDate() + 1); setRange(a, n) }
+const year1 = () => { const n = new Date(); const a = new Date(); a.setFullYear(n.getFullYear() - 1); a.setDate(a.getDate() + 1); setRange(a, n) }
+const yearAll = () => { setRange(new Date(2019, 0, 1), new Date()) }
+const yearsThis = () => { const n = new Date(); setRange(new Date(n.getFullYear(), 0, 1), n) }
 type Rap = { label: string; fn: () => void; on: () => boolean }
 const rapid: Rap[] = [
   { label: 'Сегодня',  fn: today,    on: () => fromDate.value === iso(new Date()) && toDate.value === fromDate.value },
@@ -35,6 +40,11 @@ const rapid: Rap[] = [
   { label: '7 дней',   fn: week7,    on: () => { const a = new Date(); a.setDate(a.getDate() - 6); return fromDate.value === iso(a) && !!toDate.value } },
   { label: 'Эта нед.', fn: weekThis, on: () => { const n = new Date(); const dow = (n.getDay() + 6) % 7; const m = new Date(n); m.setDate(n.getDate() - dow); return fromDate.value === iso(m) && !!toDate.value } },
   { label: 'Месяц',    fn: monthThis, on: () => fromDate.value === iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) && !!toDate.value },
+  { label: 'Квартал',  fn: q3, on: () => { const n = new Date(); const a = new Date(); a.setMonth(n.getMonth() - 3); a.setDate(a.getDate() + 1); return fromDate.value === iso(a) && !!toDate.value } },
+  { label: 'Полгода',  fn: q6, on: () => { const n = new Date(); const a = new Date(); a.setMonth(n.getMonth() - 6); a.setDate(a.getDate() + 1); return fromDate.value === iso(a) && !!toDate.value } },
+  { label: 'Год',      fn: year1, on: () => { const n = new Date(); const a = new Date(); a.setFullYear(n.getFullYear() - 1); a.setDate(a.getDate() + 1); return fromDate.value === iso(a) && !!toDate.value } },
+  { label: 'Год 2026',   fn: yearsThis, on: () => fromDate.value === iso(new Date(new Date().getFullYear(), 0, 1)) && !!toDate.value },
+  { label: 'Всё',      fn: yearAll, on: () => fromDate.value === '2019-01-01' },
 ]
 
 const qs = computed(() => {
