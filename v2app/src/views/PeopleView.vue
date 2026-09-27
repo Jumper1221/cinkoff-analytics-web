@@ -174,8 +174,8 @@ function isoD(d: Date) { return d.toISOString().slice(0, 10) }
 const isoYM = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 const todayChip = () => { fmMode.value = 'preset'; dayFrom.value = dayTo.value = isoD(new Date()); presetDays.value = true }
 const curMonthChip = () => { fmMode.value = 'month'; const n = new Date(); fmMonth.value = isoYM(n); applyMonthFilter() }
-const yestChip = () => { const d = new Date(); d.setDate(d.getDate() - 1); dayFrom.value = dayTo.value = isoD(d); presetDays.value = true }
-const weekChip = () => { const a = new Date(); const b = new Date(); a.setDate(a.getDate() - 6); dayFrom.value = isoD(a); dayTo.value = isoD(b); presetDays.value = true }
+const yestChip = () => { fmMode.value = 'preset'; const d = new Date(); d.setDate(d.getDate() - 1); dayFrom.value = dayTo.value = isoD(d); presetDays.value = true }
+const weekChip = () => { fmMode.value = 'preset'; const a = new Date(); const b = new Date(); a.setDate(a.getDate() - 6); dayFrom.value = isoD(a); dayTo.value = isoD(b); presetDays.value = true }
 // клик-по-человеку: панель-появляется-в-DOM-ПОЗЖЕ-данных — грузим-деталку-ЯВНО (даже-если-человек-тот-же)
 function pickPerson(p: string) {
   const changed = selected.value !== p

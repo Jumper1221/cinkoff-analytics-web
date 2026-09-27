@@ -17,6 +17,8 @@ function iso(d: Date) { return d.toISOString().slice(0, 10) }
 function setRange(from: Date | null, to: Date | null) {
   fromDate.value = from ? iso(from) : ''
   toDate.value = to ? iso(to) : ''
+  monthManual.value = false  // быстрый-сегмент-гасит-«ручные»-флаги-месяц/год-(-иначе-подсветка-и-лейбл-📅-врут-)
+  yearManual.value = false
 }
 const today = () => { const d = new Date(); setRange(d, d) }
 const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); setRange(d, d) }
