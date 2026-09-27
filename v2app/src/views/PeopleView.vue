@@ -41,10 +41,10 @@ interface MonthResp { person: string; months: number; monthly: MonthRow[]; prev_
 interface MonthRow { month: string; deals: number; revenue: number; avg_check: number }
 interface PYRow { pm: string; deals: number; revenue: number; avg_check: number }
 
-const cmpApi = useApi<CompareResp>(() => (cmpMode.value && cmpPeople.value.length >= 1 ? (() => {
+const cmpApi = useApi<CompareResp>(() => (cmpMode.value && cmpActive.value.length >= 1 ? (() => {
   // ВАЖНО:URLSearchParams-сам-кодирует-—-лишний-encodeURIComponent-давал-двойное-кодирование
   // (бэк-получал-%D0%95...-вместо-Ермолаева-→-пустые-серии-→-график-сравнения-никогда-не-рисовался)
-  const p = new URLSearchParams({ people: cmpPeople.value.join(';'), months: String(months.value) })
+  const p = new URLSearchParams({ people: cmpActive.value.join(';'), months: String(months.value) })
   if (dayFrom.value) p.set('ship_from', dayFrom.value)
   if (dayTo.value) p.set('ship_to', dayTo.value)
   return `/api/people/compare?${p.toString()}`
@@ -58,14 +58,21 @@ interface DayRow { day: string; deals: number; revenue: number }
 // и-порядок-прихода-ответов (sum-раньше-cmpApi-или-наоборот)-решал,-перерисуется-ли-график-—-«жил-своей-жизнью».
 const dep = computed(() => [sum.data.value, months.value] as unknown)
 const depD = computed(() => [detail.data.value, selected.value, months.value, sum.data.value, presetDays.value, dayFrom.value, dayTo.value] as unknown)
-const depC = computed(() => [cmpApi.data.value, cmpPeople.value, sum.data.value, presetDays.value, dayFrom.value, dayTo.value] as unknown)
+const depC = computed(() => [cmpApi.data.value, cmpActive.value, sum.data.value, presetDays.value, dayFrom.value, dayTo.value] as unknown)
 
 const persons = computed(() => (sum.data.value?.summary ?? []).map((s: any) => s.person))
-watch(persons, (ps) => {
+// cmpPeople-в-силе-периода: пересечение-выбранных-с-доступными-(-при-смене-периода-пропавшие-авто-исчезают-из-шапки-и-запроса-)
+const cmpActive = computed(() => cmpPeople.value.filter((p: string) => persons.value.includes(p)))
+watch(persons, (ps, oldPs) => {
   if (!selected.value && ps.length) selected.value = ps[0]
   if (cmpPeople.value.length === 0 && ps.length) {
     cmpPeople.value = ps.slice(0, 3) // топ-3-по-умолчанию
     cmpMode.value = true
+    return
+  }
+  // пери-од-сменился:выбранное-оставляем-как-есть-(-сузится-через-cmpActive-),-но-если-ВСЕ-выбранные-пропали ---пере-б-Е-Р-Ё-М-топ-3-(-пустой-график-молча-не-оставляем-)
+  if (cmpPeople.value.length > 0 && ps.length && !ps.some((p: string) => cmpPeople.value.includes(p))) {
+    cmpPeople.value = ps.slice(0, 3)
   }
 })
 
@@ -190,11 +197,11 @@ watch(months, () => {
   if (cmpMode.value && cmpPeople.value.length) cmpApi.load()
 })
 watch(selected, (v) => { if (v && !cmpMode.value) detail.load() })
-watch([cmpPeople, cmpMode], () => { if (cmpMode.value && cmpPeople.value.length) cmpApi.load() })
+watch([cmpActive, cmpMode], () => { if (cmpMode.value && cmpActive.value.length) cmpApi.load() })
 watch([dayFrom, dayTo], () => {
   sum.load()
   if (selected.value && !cmpMode.value) detail.load()
-  if (cmpMode.value && cmpPeople.value.length) cmpApi.load()
+  if (cmpMode.value && cmpActive.value.length) cmpApi.load()
 })
 
 function shortName(full: string): string {
@@ -319,7 +326,7 @@ const { canvas: cCmp } = useChart(() => {
     }
     const labels = [...all].sort()
     if (!labels.length) return null
-    const people = Object.keys(s?.by_day ?? {}).filter((p: string) => cmpPeople.value.includes(p))
+    const people = Object.keys(s?.by_day ?? {}).filter((p: string) => cmpActive.value.includes(p))
     if (!people.length) return null
     // один-день (Сегодня/Вчера): линия-«каждому-своя-горизонталь» —- ось-2-точки (Д), значение-константа,-не-«0→X»
     if (labels.length === 1) {
@@ -528,12 +535,12 @@ watch(pChip, (v) => { months.value = v })
     </table>
   </div>
 
-  <div class="panel" v-if="cmpMode && cmpPeople.length">
+  <div class="panel" v-if="cmpMode && cmpActive.length">
     <div class="hdr-row">
-      <h3>Сравнение: {{ cmpPeople.map(shortName).join(', ') }}</h3>
+      <h3>Сравнение: {{ cmpActive.map(shortName).join(', ') }}</h3>
       <div class="cmp-pick">
-        <span v-for="p in persons" :key="p" class="chip" :class="{ on: cmpPeople.includes(p) }"
-              @click="cmpPeople.includes(p) ? (cmpPeople = cmpPeople.filter(x => x !== p)) : (cmpPeople = [...cmpPeople, p].slice(-5))">
+        <span v-for="p in persons" :key="p" class="chip" :class="{ on: cmpActive.includes(p) }"
+              @click="cmpActive.includes(p) ? (cmpPeople = cmpPeople.filter(x => x !== p)) : (cmpPeople = [...cmpPeople, p].slice(-5))">
           {{ shortName(p) }}
         </span>
       </div>
