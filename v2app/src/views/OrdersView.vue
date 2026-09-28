@@ -14,21 +14,29 @@ const toDate = ref('')
 
 /* ── Быстрые фильтры дат ── */
 function iso(d: Date) { return d.toISOString().slice(0, 10) }
-function setRange(from: Date | null, to: Date | null) {
+// последний-активный-сегмент: приоритет-последнего-клика-(-в-дни-совпадения-диапазонов-горит-ОДИН-сегмент-)
+const lastSeg = ref('')
+function setRange(from: Date | null, to: Date | null, seg = '') {
   fromDate.value = from ? iso(from) : ''
   toDate.value = to ? iso(to) : ''
   monthManual.value = false  // быстрый-сегмент-гасит-«ручные»-флаги-месяц/год-(-иначе-подсветка-и-лейбл-📅-врут-)
   yearManual.value = false
+  lastSeg.value = seg
 }
-const today = () => { const d = new Date(); setRange(d, d) }
-const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); setRange(d, d) }
-const week7 = () => { const a = new Date(); const b = new Date(); a.setDate(a.getDate() - 6); setRange(a, b) }
+const today = () => { const d = new Date(); setRange(d, d, 'today') }
+const yesterday = () => { const d = new Date(); d.setDate(d.getDate() - 1); setRange(d, d, 'yday') }
+const week7 = () => { const a = new Date(); const b = new Date(); a.setDate(a.getDate() - 6); setRange(a, b, 'w7') }
 const weekThis = () => {
   const now = new Date(); const dow = (now.getDay() + 6) % 7  // 1=пн
   const mon = new Date(now); mon.setDate(now.getDate() - dow)
-  setRange(mon, now)
+  setRange(mon, now, 'wcur')
 }
-const monthThis = () => { const n = new Date(); setRange(new Date(n.getFullYear(), n.getMonth(), 1), n) }
+const monthThis = () => { const n = new Date(); setRange(new Date(n.getFullYear(), n.getMonth(), 1), n, 'month') }
+// подсветка-сегмента: свой-диапазон-совпадает-И-(-после-кликов-)-это-последний-кликутый-сегмент;
+// пока-кликов-не-было-(-страница-только-открыта-)-светится-по-совпадению-дат-как-раньше
+function seg(id: string, match: () => boolean): boolean {
+  return match() && (lastSeg.value === '' || lastSeg.value === id)
+}
 
 // ── Периоды: сегменты-быстрых (Сегодня/Вчера/7-дней/Эта-нед./Месяц) + кнопка-📅-с-поповером (месяц/год/свой) ──
 const isoYM = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -177,11 +185,11 @@ onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
       <span class="qf-title">Заказы за период<span v-if="totalShown"> — {{ totalShown.toLocaleString('ru-RU') }}</span></span>
       <div class="qf-group" style="position: relative;">
         <div class="seg">
-          <button class="seg-btn" :class="{ on: fromDate === iso(new Date()) && toDate === fromDate }" @click="today">Сегодня</button>
-          <button class="seg-btn" :class="{ on: (() => { const d = new Date(); d.setDate(d.getDate() - 1); return fromDate === iso(d) && toDate === fromDate })() }" @click="yesterday">Вчера</button>
-          <button class="seg-btn" :class="{ on: (() => { const a = new Date(); a.setDate(a.getDate() - 6); return fromDate === iso(a) && !!toDate })() }" @click="week7">7 дней</button>
-          <button class="seg-btn" :class="{ on: (() => { const n = new Date(); const dow = (n.getDay() + 6) % 7; const m = new Date(n); m.setDate(n.getDate() - dow); return fromDate === iso(m) && !!toDate })() }" @click="weekThis">Эта нед.</button>
-          <button class="seg-btn" :class="{ on: fromDate === iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) && !!toDate }" @click="monthThis">Месяц</button>
+          <button class="seg-btn" :class="{ on: seg('today', () => fromDate === iso(new Date()) && toDate === fromDate) }" @click="today">Сегодня</button>
+          <button class="seg-btn" :class="{ on: seg('yday', () => { const d = new Date(); d.setDate(d.getDate() - 1); return fromDate === iso(d) && toDate === fromDate }) }" @click="yesterday">Вчера</button>
+          <button class="seg-btn" :class="{ on: seg('w7', () => { const a = new Date(); a.setDate(a.getDate() - 6); return fromDate === iso(a) && !!toDate }) }" @click="week7">7 дней</button>
+          <button class="seg-btn" :class="{ on: seg('wcur', () => { const n = new Date(); const dow = (n.getDay() + 6) % 7; const m = new Date(n); m.setDate(n.getDate() - dow); return fromDate === iso(m) && !!toDate }) }" @click="weekThis">Эта нед.</button>
+          <button class="seg-btn" :class="{ on: seg('month', () => fromDate === iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)) && !!toDate) }" @click="monthThis">Месяц</button>
         </div>
         <button class="btn-range" :class="{ act: manualActive }" @click.stop="togglePop" title="Месяц / год / свой-диапазон">📅 {{ rangeLabel }} <span class="caret">▾</span></button>
         <button v-if="hasDateFilter" class="x-reset" @click="resetRange" title="Сбросить-период">✕</button>
