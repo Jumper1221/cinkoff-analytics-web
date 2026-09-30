@@ -16,7 +16,7 @@ const nav = [
   { to: '/orders', label: 'Заказы' },
   { to: '/items', label: 'Товары' },
   { to: '/remnants', label: 'Остатки' },
-  { to: '/prices', label: 'Цены' },
+  { to: '/prices', label: 'Каталог товаров' },
   { to: '/years', label: 'Годы' },
   { to: '/forecast', label: 'Прогноз' },
   { to: '/branches', label: 'Точки' },
