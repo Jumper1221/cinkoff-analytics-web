@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { useApi, fmtMoney, fmtDate, fmtInt } from '../api/client'
 import { useChart, chartColors } from '../api/useChart'
 import type { PricePoint } from '../api/types'
@@ -89,9 +89,13 @@ function pickSurf(k: string, f: string, g: string, s: string) {
   if (selSurf.value === s && selGroup.value?.group === g && selGroup.value?.kind === k) {
     selSurf.value = ''
   } else {
+    const sameGroup = selGroup.value?.group === g && selGroup.value?.kind === k && !selFamilyOnly.value
     selGroup.value = { kind: k, family: f, group: g }
     selFamilyOnly.value = false
-    selSurf.value = s
+    // watch(selGroup) затирает selSurf при смене группы — выставляем после его отработки
+    if (sameGroup) { selSurf.value = selSurf.value === s ? '' : s }
+    else { selSurf.value = s }
+    nextTick(() => { if (selSurf.value !== s && !sameGroup) selSurf.value = s })
   }
 }
 
@@ -198,27 +202,29 @@ const { canvas: cHist } = useChart(() => {
       <div v-else-if="tree.error.value" class="err-text">{{ tree.error.value }}</div>
       <template v-else>
         <div v-for="k in (tree.data.value?.kinds ?? [])" :key="k.kind" class="cat-kind-block">
+          <!-- Уровень 1: вид. Стрелка слева, имя, счётчик правым краем. -->
           <div class="tree-kind click" @click="toggleKind(k.kind)">
-            <span class="tri">{{ kindOpen === k.kind ? '▾' : '▸' }}</span>{{ k.kind }}
-            <span class="muted small">— {{ fmtInt(k.n_items) }}</span>
+            <span class="tri">{{ kindOpen === k.kind ? '▾' : '▸' }}</span>
+            <span class="row-name">{{ k.kind }}</span>
+            <span class="muted small">{{ fmtInt(k.n_items) }}</span>
           </div>
           <div v-if="kindOpen === k.kind" class="kind-groups">
             <div v-for="f in k.families" :key="f.family" class="fam-block">
+              <!-- Уровень 2: семейство. Та же схема: стрелка → имя → счётчик. -->
               <div class="tree-fam-row">
+                <span class="tri2 fam-tri click" @click="toggleFamily(k.kind, f.family)">{{ (famOpen === f.family && kindOpen === k.kind) ? '▾' : '▸' }}</span>
                 <span class="tree-family click" :class="{ on: selFamilyOnly && selGroup?.family === f.family && selGroup?.kind === k.kind }"
-                      @click="pickFamily(k.kind, f.family)">
-                  {{ f.family }}
-                </span>
-                <span class="tree-fam-tri click" @click="toggleFamily(k.kind, f.family)">{{ (famOpen === f.family && kindOpen === k.kind) ? '▾' : '▸' }}</span>
+                      @click="pickFamily(k.kind, f.family)">{{ f.family }}</span>
                 <span class="muted small">{{ fmtInt(f.n_priced) }}</span>
               </div>
               <div v-if="famOpen === f.family && kindOpen === k.kind" class="kind-groups">
                 <div v-for="g in f.groups" :key="g.group_name" class="tree-group-wrap">
+                  <!-- Уровень 3: группа. Та же схема: стрелка (покрытия) → имя → счётчик. -->
                   <div class="tree-group click"
                      :class="{ on: selGroup?.group === g.group_name && selGroup?.kind === k.kind && !selFamilyOnly }"
                      @click="pickGroup(k.kind, f.family, g.group_name)">
-                    <span class="tri2 click" @click.stop="toggleSurf(g.group_name)">{{ surfOpen === g.group_name ? '▾' : '▸' }}</span>
-                    <span class="tg-name">{{ g.group_name }}</span>
+                    <span class="tri2 tri2-click click" @click.stop="toggleSurf(g.group_name)">{{ surfOpen === g.group_name ? '▾' : '▸' }}</span>
+                    <span class="row-name">{{ g.group_name }}</span>
                     <span class="muted small">{{ fmtInt(g.n_priced) }}</span>
                   </div>
                   <div v-if="surfOpen === g.group_name" class="surf-list">
@@ -228,7 +234,7 @@ const { canvas: cHist } = useChart(() => {
                          class="tree-surf click"
                          :class="{ on: selSurf === s.surface && selGroup?.group === g.group_name }"
                          @click="pickSurf(k.kind, f.family, g.group_name, s.surface)">
-                      <span class="tg-name">{{ s.surface }}</span>
+                      <span class="row-name">{{ s.surface }}</span>
                       <span class="muted small">{{ fmtInt(s.n) }}</span>
                     </div>
                   </div>
@@ -317,25 +323,29 @@ const { canvas: cHist } = useChart(() => {
 }
 .cat-search { flex-grow: 1; min-width: 220px; }
 .cat-tree { max-height: 62vh; overflow: auto; }
-.tree-kind { padding: 6px 8px; font-weight: 600; border-radius: 6px; }
+.tree-kind { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px; font-weight: 600; border-radius: 6px; }
 .tree-kind:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .tri { display: inline-block; width: 14px; color: var(--muted); }
 .fam-block { margin: 2px 0; }
 .tree-fam-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 8px 3px 16px; border-radius: 6px; }
+.fam-tri { flex: 0 0 12px; }
 .tree-family { flex-grow: 1; }
 .tree-family:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .tree-family.on { color: var(--accent); font-weight: 700; }
-.tree-fam-tri { width: 14px; color: var(--muted); cursor: pointer; }
 .kind-groups { margin: 2px 0 8px 16px; }
 .tree-group-wrap { margin: 0; }
-.tri2 { display: inline-block; width: 12px; color: var(--muted); font-size: 11px; }
+.tri2 { display: inline-block; width: 12px; color: var(--muted); font-size: 11px; flex: 0 0 12px; }
+.tri2-click { align-self: baseline; }
+.row-name { flex-grow: 1; min-width: 0; }
 .surf-list { margin: 1px 0 4px 30px; }
-.tree-surf { display: flex; justify-content: space-between; gap: 8px; padding: 3px 8px 3px 14px; border-radius: 6px; font-size: 13px; }
+.tree-surf { display: flex; gap: 8px; padding: 3px 8px 3px 14px; border-radius: 6px; font-size: 13px; }
+.tree-surf .row-name { padding-left: 8px; }
 .tree-surf:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .tree-surf.on { background: color-mix(in srgb, var(--accent) 20%, transparent); font-weight: 600; }
-.tree-group { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px 4px 34px; border-radius: 6px; }
+.tree-group { display: flex; align-items: baseline; gap: 6px; padding: 4px 8px 4px 18px; border-radius: 6px; }
 .tree-group:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .tree-group.on { background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 600; }
+.tree-group .row-name { flex-grow: 1; }
 .cat-list { min-width: 0; }
 .cell-name { max-width: 460px; }
 .num { text-align: right; white-space: nowrap; }

@@ -320,7 +320,37 @@ def load_prices_v2(conn):
             total += len(batch)
         print(f"  prices {dname[7:40]}: итого {total} ({time.time()-t0:.0f}s)")
     cur.close()
+    # Сводка-счётчиков-для-выпадающего-списка-заводов-(-/api/catalog/branches-):
+    # без-неё-каждый-запрос-сканирует-13.5M-строк-(-GroupAggregate---21-сек-).
+    print("  branch_price_stats: пересборка...")
+    _refresh_branch_price_stats(conn)
     print(f"PRICES: {total} строк за {time.time()-t0:.0f}s")
+
+
+def refresh_branch_price_stats(conn=None):
+    """Полная-пересборка-branch_price_stats---после-загрузки-цен-(-вызывается-из-синков-)."""
+    if conn is None:
+        conn = _conn()
+        _refresh_branch_price_stats(conn)
+        conn.close()
+    else:
+        _refresh_branch_price_stats(conn)
+
+
+def _refresh_branch_price_stats(conn) -> None:
+    """TRUNCATE+INSERT-в-branch_price_stats-(-счётчики-товаров-с-ценой-по-заводам-)."""
+    t0 = time.time()
+    cur = conn.cursor()
+    cur.execute("TRUNCATE branch_price_stats")
+    cur.execute("""
+        INSERT INTO branch_price_stats (branch_id_1c, n_items, updated_at)
+        SELECT branch_id_1c, COUNT(DISTINCT nomenclature_id), now()
+        FROM prices_history
+        GROUP BY branch_id_1c
+    """)
+    conn.commit()
+    cur.close()
+    print(f"  branch_price_stats: пересобрана ({time.time()-t0:.1f}s)")
 
 
 def load_files_and_misc(conn):

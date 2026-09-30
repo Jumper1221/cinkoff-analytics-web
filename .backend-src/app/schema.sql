@@ -307,3 +307,12 @@ CREATE INDEX IF NOT EXISTS idx_nom_group_name_trgm   ON nomenclature USING gin (
 CREATE INDEX IF NOT EXISTS idx_rem_kind_qty ON remnants_snapshots (kind, qty DESC) WHERE kind = 'metall';
 CREATE INDEX IF NOT EXISTS idx_rem_kind_goods_qty ON remnants_snapshots (kind, qty DESC) WHERE kind = 'goods';
 CREATE INDEX IF NOT EXISTS idx_rem_delivery ON remnants_snapshots (kind, delivery_date) WHERE kind = 'delivery';
+
+
+-- Сводка-счётчиков-по-заводам-для-выпадающего-списка-(-/api/catalog/branches-):
+-- пересобирается-после-загрузки-цен-(-stage1_load.load_prices_v2-),-чтоб-веб-не-сканировал-13.5M-строк.
+CREATE TABLE IF NOT EXISTS branch_price_stats (
+    branch_id_1c text PRIMARY KEY,
+    n_items      bigint      NOT NULL DEFAULT 0,
+    updated_at   timestamptz NOT NULL DEFAULT now()
+);

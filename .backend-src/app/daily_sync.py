@@ -397,6 +397,14 @@ def sync_prices(conn, stamp: Path | None = None) -> int:
                     break
                 time.sleep(0.6)
             log.info("  цены %s: %d строк", dirname[7:45], cnt)
+    # сводка-для-выпадающего-списка-заводов-(-/api/catalog/branches---иначе-19-сек-на-13.5M-строк-):
+    try:
+        from stage1_load import refresh_branch_price_stats
+        log.info("  branch_price_stats: пересборка...")
+        refresh_branch_price_stats(conn)
+        log.info("  branch_price_stats: готово")
+    except Exception as e:  # не-ронять-синк-из-за-сводки
+        log.warning("  branch_price_stats: не-пересобрана (%s)", e)
     log.info("PRICES: +%d строк за %.0fs", total, time.time() - t0)
     return total
 

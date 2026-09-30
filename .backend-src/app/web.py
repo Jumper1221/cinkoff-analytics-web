@@ -417,12 +417,24 @@ def catalog_tree():
 
 @app.get("/api/catalog/branches")
 def catalog_branches():
-    """Точки отгрузки, по которым есть цены."""
-    return q("""
+    """Точки-отгрузки, по-которым-есть-цены.
+
+    Читает-сводку-branch_price_stats-(-пересобирается-после-каждой-загрузки-цен-),
+    чтобы-не-сканировать-13.5M-строк-prices_history-на-каждый-запрос-(-было---19-20-сек-).
+    Если-сводка-пуста-(-первый-запуск-до-первого-синка-)-подсчёт-на-лету-и-кэш-на-5-мин.
+    """
+    rows = q("SELECT s.branch_id_1c AS id_1c, b.name, s.n_items AS n_items"
+             " FROM branch_price_stats s JOIN branches b ON b.id_1c = s.branch_id_1c"
+             " ORDER BY b.name")
+    if rows:
+        return rows
+    # фолбэк:---старый-тяжёлый-подсчёт (сводка-ещё-не-собрана)
+    rows = q("""
         SELECT b.id_1c, b.name, COUNT(DISTINCT p.nomenclature_id) AS n_items
         FROM prices_history p JOIN branches b ON b.id_1c = p.branch_id_1c
         GROUP BY b.id_1c, b.name ORDER BY b.name
     """)
+    return rows
 
 
 @app.get("/api/catalog/items")
