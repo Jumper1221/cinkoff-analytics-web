@@ -335,6 +335,236 @@ def catalog_price_history(nom_id: str, branch: str = ""):
     """, (nom_id,))
 
 
+# --- Каталог (вкладка «Цены», переработка 29.09): дерево + точка отгрузки + текущие цены.
+
+# --- Каталог (вкладка «Цены», переработка 29.09): дерево + точка отгрузки + текущие цены.
+
+CATALOG_KINDS = ("Продукция", "Товары")
+
+_catalog_tree_cache: dict = {"at": 0.0, "data": None}
+
+
+def _catalog_family(group_name: str) -> str:
+    """Семейство (2-й уровень дерева): свёртка плоских групп 1С по общему префиксу.
+
+    «Металлочерепица Кредо» и «Металлочерепица Кредо мерная» → «Металлочерепица».
+    Пара семейств сворачивается по 2 словам (Виниловый сайдинг/водосток, Виниловый сайдинг Vicker...).
+    """
+    n = " ".join((group_name or "").split())
+    if not n:
+        return "—"
+    words = n.split()
+    if words[0] == "Виниловый" and len(words) > 1:
+        return "Виниловый " + words[1] if words[1] != "водосток" else "Виниловый водосток"
+    if words[0] == "Виниловый":
+        return "Виниловый сайдинг"
+    return words[0]
+
+
+@app.get("/api/catalog/tree")
+def catalog_tree():
+    """Дерево каталога: вид → семейство → группы (с числом товаров/позиций с ценами).
+
+    Считается по 13.5М строк цен (~3 с) — кэшируется в процессе на 30 минут.
+    """
+    import time as _time
+    now = _time.time()
+    if now - _catalog_tree_cache["at"] > 1800 or not _catalog_tree_cache["data"]:
+        kinds = q("""
+            SELECT nf.kind, COUNT(*) AS n_items
+            FROM nomenclature_full nf
+            WHERE nf.is_deleted = false
+            GROUP BY nf.kind ORDER BY n_items DESC
+        """)
+        groups = q("""
+            SELECT nf.kind, nf.group_name, COUNT(*) AS n_items,
+                   COUNT(DISTINCT p.nomenclature_id) FILTER (WHERE p.nomenclature_id IS NOT NULL) AS n_priced
+            FROM nomenclature_full nf
+            LEFT JOIN prices_history p ON p.nomenclature_id = nf.id_1c
+            WHERE nf.is_deleted = false
+            GROUP BY nf.kind, nf.group_name
+        """)
+        by_kind: dict = {}
+        for g in groups:
+            by_kind.setdefault(g["kind"], []).append(g)
+        tree = []
+        for k in kinds:
+            gs = by_kind.get(k["kind"], [])
+            # свёртка групп в семейства по префиксу имени (заводская иерархия):
+            fams: dict = {}
+            for g in gs:
+                fam_groups = fams.setdefault(_catalog_family(g["group_name"]), [])
+                fam_groups.append(g)
+            fam_list = [
+                {
+                    "family": f,
+                    "n_items": sum(int(g["n_items"] or 0) for g in fs2),
+                    "n_priced": sum(int(g["n_priced"] or 0) for g in fs2),
+                    "groups": sorted(fs2, key=lambda g: -int(g["n_items"] or 0)),
+                }
+                for f, fs2 in fams.items()
+            ]
+            fam_list.sort(key=lambda f: -f["n_items"])
+            tree.append({
+                "kind": k["kind"], "n_items": k["n_items"],
+                "n_families": len(fam_list),
+                "families": fam_list,
+            })
+        _catalog_tree_cache["at"] = now
+        _catalog_tree_cache["data"] = {"kinds": tree}
+    return _catalog_tree_cache["data"]
+
+
+@app.get("/api/catalog/branches")
+def catalog_branches():
+    """Точки отгрузки, по которым есть цены."""
+    return q("""
+        SELECT b.id_1c, b.name, COUNT(DISTINCT p.nomenclature_id) AS n_items
+        FROM prices_history p JOIN branches b ON b.id_1c = p.branch_id_1c
+        GROUP BY b.id_1c, b.name ORDER BY b.name
+    """)
+
+
+@app.get("/api/catalog/items")
+def catalog_items(branch: str, group: str = "", kind: str = "", search: str = "",
+                  surface: str = "", limit: int = 50, offset: int = 0):
+    """Товары выбранной точки: текущая цена (последняя версия), поиск, пагинация.
+
+    group = точная группа 1С; без group, но с kind = семейство (по префиксу группы);
+    surface = покрытие внутри группы (с нормализацией вариантов: «Полиэстер матовый
+    двухсторонний» → «Полиэстер» — это одно покрытие с разными свойствами листа).
+    limit/offset — стандартные имена, так约定的 контрактом (выбор Михаила).
+    """
+    branch = branch.strip()
+    if not branch:
+        return {"total": 0, "items": []}
+    lim = max(1, min(200, limit))
+    off = max(0, offset)
+    # DISTINCT ON: последняя версия цены товара в этой точке. Цены двух соглашений
+    # совпадают (проверено 29.09: 206 607 пар, различий 0) — единственная версия на товар.
+    wh = ["nf.is_deleted = false"]
+    search_param = ""
+    group_param = ""
+    if group:
+        wh.append("nf.group_name = %s")
+        group_param = group.strip()
+    if search:
+        wh.append("nf.full_name ILIKE %s")
+        search_param = f"%{search.strip()}%"
+    where = " AND ".join(wh)
+    # --- Покрытие (surface) внутри группы: база-без-«двухсторонний/слим/матовый/ТХ/ТР/СТ».
+    surf_f = ""
+    if group and surface.strip():
+        s = " ".join(surface.strip().split())
+        # базовое-имя-покрытия = отсечь-хвостовые-модификаторы-(-до-первого-ключевого-слова-):
+        base = s
+        for mod in [" двухсторонний", " слим", " матовый", " ТХ", " ТР", " СТ", " TwinColor"]:
+            if base.endswith(mod):
+                base = base[: -len(mod)]
+        # соответствие-в-SQL:---точное-ИЛИ-точное-«база+свойство»-(-«Полиэстер»+«Полиэстер двухсторонний»...-)
+        surf_f = "AND (btrim(nf.surface) = %s OR btrim(nf.surface) = %s OR btrim(nf.surface) = %s)"
+        surf_params = [base, f"{base} слим", f"{base} матовый"]
+        # «двухсторонний»-в-базе-(-Полиэстер двухсторонний-)-и-«...матовый двухсторонний»:
+        if s.endswith("двухсторонний"):
+            surf_f = "AND (btrim(nf.surface) = %s OR btrim(nf.surface) = %s OR btrim(nf.surface) = %s OR btrim(nf.surface) = %s)"
+            base2 = base
+            args_b = [base2, f"{base2} матовый", f"{base2} слим", f"{base2} матовый двухсторонний"]
+            surf_params = args_b
+        if base == "Полиэстер":
+            surf_f = "AND (btrim(nf.surface) = 'Полиэстер' OR btrim(nf.surface) = 'Полиэстер слим' OR btrim(nf.surface) = 'Полиэстер матовый' OR btrim(nf.surface) = 'Полиэстер двухсторонний' OR btrim(nf.surface) = 'Полиэстер матовый двухсторонний' OR btrim(nf.surface) = 'Полиэстер матовый')"
+            surf_params = []
+        if base == "Сатин":
+            surf_f = "AND (btrim(nf.surface) = 'Сатин' OR btrim(nf.surface) = 'Сатин матовый' OR btrim(nf.surface) = 'Сатин матовый ТХ' OR btrim(nf.surface) = 'Сатин матовый ТХ-35')"
+            surf_params = []
+        if base == "Drap":
+            surf_f = "AND (btrim(nf.surface) = 'Drap' OR btrim(nf.surface) LIKE 'Drap %')"
+            surf_params = []
+        if base == "Принт":
+            surf_f = "AND (btrim(nf.surface) = 'Принт Премиум' OR btrim(nf.surface) = 'Принт Элит' OR btrim(nf.surface) = 'Принт Премиум двухсторонний' OR btrim(nf.surface) = 'Принт Элит двухсторонний')"
+            surf_params = []
+    fam_f = ""
+    final_args = [branch]
+    if not group:
+        fam = (kind or "").strip()
+        if fam == "Виниловый водосток":
+            fam_f = "AND (nf.group_name ILIKE 'Виниловый водосток%' OR nf.group_name = 'Водосток')"
+        elif fam:
+            fam_f = "AND nf.group_name ILIKE %s"
+            final_args.append(fam + "%")
+    final_args += ([group_param] if group_param else [])
+    if surf_f:
+        if surf_params:
+            final_args += surf_params
+        else:
+            pass  # литеральные-сравнения-без-параметров
+    final_args += ([search_param] if search_param else [])
+    total = q1(f"""
+        SELECT COUNT(*) AS n FROM (
+          SELECT DISTINCT p.nomenclature_id
+          FROM prices_history p
+          JOIN nomenclature_full nf ON nf.id_1c = p.nomenclature_id
+          WHERE p.branch_id_1c = %s AND 1=1 {fam_f} AND {where} {surf_f}
+        ) t
+    """, tuple(final_args))["n"]
+    rows = q(f"""
+        SELECT nf.id_1c, nf.code_1c, nf.full_name, nf.group_name, nf.color, nf.thickness, nf.surface,
+               l.price::float8 AS price, l.discount_pct::float8 AS discount_pct,
+               l.discount_price::float8 AS discount_price, l.version_date
+        FROM (SELECT DISTINCT ON (p2.nomenclature_id) p2.nomenclature_id, p2.price, p2.discount_pct,
+                     p2.discount_price, p2.version_date
+              FROM prices_history p2 WHERE p2.branch_id_1c = %s
+              ORDER BY p2.nomenclature_id, p2.version_date DESC) l
+        JOIN nomenclature_full nf ON nf.id_1c = l.nomenclature_id
+        WHERE 1=1 {fam_f} AND {where} {surf_f}
+        ORDER BY nf.full_name LIMIT {lim} OFFSET {off}
+    """, tuple([branch] + final_args[1:]))  # первый-branch-уже-в-строке-DISTINCT-ON
+    return {"total": int(total), "items": rows}
+
+
+@app.get("/api/catalog/surfaces")
+def catalog_surfaces(branch: str, group: str):
+    """Разбивка-покрытий (surface) внутри группы 1С — для-4-го-уровня-дерева.
+
+    Возвращает-«базовые-покрытия» (без-хвостов-«матовый/двухсторонний/слим/ТХ...»)
+    со-счётчиком-позиций:---«Полиэстер двухсторонний»-и-«Полиэстер матовый»-→-«Полиэстер».
+    """
+    branch = branch.strip()
+    g = group.strip()
+    if not branch or not g:
+        return {"groups": []}
+    rows = q("""
+        SELECT COALESCE(NULLIF(btrim(nf.surface), ''), '—') AS surf, COUNT(*) AS n
+        FROM nomenclature_full nf
+        WHERE nf.group_name = %s AND nf.is_deleted = false
+        GROUP BY 1 ORDER BY 2 DESC
+    """, (g,))
+    # нормализация:---«Полиэстер матовый»→«Полиэстер»,-«Drap ТХ»→«Drap»-и-т.п.
+    def _base(s: str) -> str:
+        if s == "—": return s
+        for suf in [" двухсторонний", " слим", " матовый", " ТХ", " ТР", " СТ", " TwinColor", " матовый двухсторонний"]:
+            if s.endswith(suf):
+                return _base(s[: -len(suf)])
+        # «Принт Премиум»-и-«Принт Элит»-→-«Принт»
+        if s.startswith("Принт "): return "Принт"
+        if s.startswith("GreenCoat Pural"): return "GreenCoat Pural"
+        if s.startswith("Полидэкстер"): return "Полидэкстер"
+        if s.startswith("PurPro"): return "PurPro"
+        if s.startswith("PurLite"): return "PurLite"
+        if s.startswith("Rooftop"): return "Rooftop"
+        if s.startswith("Velur"): return "Velur"
+        if s.startswith("Атлас"): return "Атлас"
+        if s.startswith("Цинк"): return "Цинк"
+        return s
+    agg: dict = {}
+    for r in rows:
+        b = _base(r["surf"])
+        agg[b] = agg.get(b, 0) + int(r["n"])
+    # порядок---по-количеству
+    items = sorted(agg.items(), key=lambda kv: -kv[1])
+    return {"group": g, "total": sum(agg.values()),
+            "surfaces": [{"surface": k, "n": v} for k, v in items if k != "—"]}
+
+
 @app.get("/api/remnants")
 def remnants(kind: str = "metall", snap_date: str = "", limit: int = 100):
     """Без-даты = последний-снапшот (иначе-дубли товар×склад по-2+-датам)."""

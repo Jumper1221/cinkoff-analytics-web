@@ -10,6 +10,7 @@ interface Branch { id_1c: string; name: string; n_items: number }
 interface TreeGroup { kind: string; group_name: string; n_items: number; n_priced: number }
 interface Family { family: string; n_items: number; n_priced: number; groups: TreeGroup[] }
 interface TreeKind { kind: string; n_items: number; n_families: number; families: Family[] }
+interface SurfItem { surface: string; n: number }
 interface CatalogItem {
   id_1c: string; code_1c: string; full_name: string; group_name: string
   color?: string; thickness?: string; surface?: string
@@ -38,6 +39,7 @@ const kindOpen = ref('')
 const famOpen = ref('')
 const selGroup = ref<{ kind: string; family: string; group: string } | null>(null)
 const selFamilyOnly = ref(false)
+const selSurf = ref('')   // покрытие внутри выбранной группы (4-й уровень)
 const search = ref('')
 const offset = ref(0)
 let searchTm: number | undefined
@@ -53,6 +55,7 @@ const listQ = computed(() => {
     // всё семейство: фильтр по префиксу имён групп (kind = семейство, group пуст)
     p.set('kind', selGroup.value.family)
   }
+  if (selSurf.value && selGroup.value?.group) p.set('surface', selSurf.value)
   if (hasSearch.value) p.set('search', search.value.trim())
   return `/api/catalog/items?${p.toString()}`
 })
@@ -63,7 +66,34 @@ watch(search, () => {
   window.clearTimeout(searchTm)
   searchTm = window.setTimeout(() => { offset.value = 0; if (listQ.value) items.load() }, 400)
 })
-watch(selGroup, () => { offset.value = 0 })
+watch(selGroup, (nv, ov) => { offset.value = 0; if (nv?.group !== ov?.group) selSurf.value = '' })
+
+// --- 4-й уровень: покрытия группы (лениво, при первом раскрытии) ---
+const surfOpen = ref('')            // имя раскрытой группы
+const surfCache = ref<Record<string, SurfItem[]>>({})
+const surfLoading = ref(false)
+async function toggleSurf(g: string) {
+  if (surfOpen.value === g) { surfOpen.value = ''; return }
+  surfOpen.value = g
+  if (!surfCache.value[g]) {
+    surfLoading.value = true
+    try {
+      const p = new URLSearchParams({ branch: branchId.value || '', group: g })
+      const r = await fetch(`/api/catalog/surfaces?${p.toString()}`)
+      const d = await r.json() as { surfaces: SurfItem[] }
+      surfCache.value = { ...surfCache.value, [g]: d.surfaces ?? [] }
+    } finally { surfLoading.value = false }
+  }
+}
+function pickSurf(k: string, f: string, g: string, s: string) {
+  if (selSurf.value === s && selGroup.value?.group === g && selGroup.value?.kind === k) {
+    selSurf.value = ''
+  } else {
+    selGroup.value = { kind: k, family: f, group: g }
+    selFamilyOnly.value = false
+    selSurf.value = s
+  }
+}
 
 function toggleKind(k: string) {
   kindOpen.value = kindOpen.value === k ? '' : k
@@ -183,11 +213,25 @@ const { canvas: cHist } = useChart(() => {
                 <span class="muted small">{{ fmtInt(f.n_priced) }}</span>
               </div>
               <div v-if="famOpen === f.family && kindOpen === k.kind" class="kind-groups">
-                <div v-for="g in f.groups" :key="g.group_name" class="tree-group click"
+                <div v-for="g in f.groups" :key="g.group_name" class="tree-group-wrap">
+                  <div class="tree-group click"
                      :class="{ on: selGroup?.group === g.group_name && selGroup?.kind === k.kind && !selFamilyOnly }"
                      @click="pickGroup(k.kind, f.family, g.group_name)">
-                  <span class="tg-name">{{ g.group_name }}</span>
-                  <span class="muted small">{{ fmtInt(g.n_priced) }}</span>
+                    <span class="tri2 click" @click.stop="toggleSurf(g.group_name)">{{ surfOpen === g.group_name ? '▾' : '▸' }}</span>
+                    <span class="tg-name">{{ g.group_name }}</span>
+                    <span class="muted small">{{ fmtInt(g.n_priced) }}</span>
+                  </div>
+                  <div v-if="surfOpen === g.group_name" class="surf-list">
+                    <div v-if="surfLoading && !surfCache[g.group_name]" class="muted small" style="padding: 2px 0 2px 40px">Покрытия…</div>
+                    <div v-else-if="!(surfCache[g.group_name]?.length)" class="muted small" style="padding: 2px 0 2px 46px">—</div>
+                    <div v-else v-for="s in (surfCache[g.group_name] ?? [])" :key="s.surface"
+                         class="tree-surf click"
+                         :class="{ on: selSurf === s.surface && selGroup?.group === g.group_name }"
+                         @click="pickSurf(k.kind, f.family, g.group_name, s.surface)">
+                      <span class="tg-name">{{ s.surface }}</span>
+                      <span class="muted small">{{ fmtInt(s.n) }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -199,7 +243,7 @@ const { canvas: cHist } = useChart(() => {
     <div class="panel cat-list">
       <h3>
         Товары <span class="muted">@ {{ branchName }}</span>
-        <span v-if="selGroup && selGroup.group" class="muted"> — {{ selGroup.group }}</span>
+        <span v-if="selGroup && selGroup.group" class="muted"> — {{ selGroup.group }}<template v-if="selSurf"> · {{ selSurf }}</template></span>
         <span v-else-if="selGroup && !selGroup.group" class="muted"> — семейство «{{ selGroup.family }}»</span>
         <span v-else-if="hasSearch" class="muted">— поиск «{{ search.trim() }}»</span>
         <span v-if="items.data.value" class="muted small"> — {{ fmtInt(items.data.value.total) }}</span>
@@ -208,13 +252,14 @@ const { canvas: cHist } = useChart(() => {
       <div v-else-if="items.error.value" class="err-text">{{ items.error.value }}</div>
       <template v-else-if="items.data.value && items.data.value.items.length">
         <table>
-          <thead><tr><th>Товар</th><th>Прайс</th><th>Скидка %</th><th>Со скидкой</th><th>Версия</th></tr></thead>
+          <thead><tr><th>Товар</th><th>Покрытие</th><th>Прайс</th><th>Скидка %</th><th>Со скидкой</th><th>Версия</th></tr></thead>
           <tbody>
             <tr v-for="it in items.data.value.items" :key="it.id_1c" class="click" @click="sel = it">
               <td class="cell-name">
                 {{ it.full_name }}
                 <div v-if="it.color || it.thickness" class="muted small">{{ [it.color, it.thickness].filter(Boolean).join(', ') }}</div>
               </td>
+              <td class="muted">{{ it.surface || '—' }}</td>
               <td class="num">{{ fmtMoney(it.price) }}</td>
               <td class="num">{{ it.discount_pct ? it.discount_pct.toFixed(1) + '%' : '—' }}</td>
               <td class="num"><b>{{ fmtMoney(it.discount_price) }}</b></td>
@@ -282,6 +327,12 @@ const { canvas: cHist } = useChart(() => {
 .tree-family.on { color: var(--accent); font-weight: 700; }
 .tree-fam-tri { width: 14px; color: var(--muted); cursor: pointer; }
 .kind-groups { margin: 2px 0 8px 16px; }
+.tree-group-wrap { margin: 0; }
+.tri2 { display: inline-block; width: 12px; color: var(--muted); font-size: 11px; }
+.surf-list { margin: 1px 0 4px 30px; }
+.tree-surf { display: flex; justify-content: space-between; gap: 8px; padding: 3px 8px 3px 14px; border-radius: 6px; font-size: 13px; }
+.tree-surf:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.tree-surf.on { background: color-mix(in srgb, var(--accent) 20%, transparent); font-weight: 600; }
 .tree-group { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px 4px 34px; border-radius: 6px; }
 .tree-group:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .tree-group.on { background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 600; }
