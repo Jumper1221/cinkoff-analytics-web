@@ -316,3 +316,18 @@ CREATE TABLE IF NOT EXISTS branch_price_stats (
     n_items      bigint      NOT NULL DEFAULT 0,
     updated_at   timestamptz NOT NULL DEFAULT now()
 );
+
+-- Персистентный-снапшот-дерева-каталога-(-/api/catalog/tree-):-вид-→-семейство-→-группа.
+-- Пересобирается-при-синке-цен-(-catalog_tree_build.rebuild_catalog_tree_stats;-хуки-в
+-- daily_sync.sync_prices-и-stage1_load.load_prices_v2-),-чтоб-веб-не-сканировал-13.5M-строк-цен:
+-- роут-читает-таблицу-за-миллисекунды;-пусто/built_at->48ч-—-старый-тяжёлый-путь-(-фолбэк-).
+CREATE TABLE IF NOT EXISTS catalog_tree_stats (
+    kind       TEXT NOT NULL,
+    family     TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    n_items    INTEGER NOT NULL,
+    n_priced   INTEGER NOT NULL,
+    kind_total INTEGER NOT NULL DEFAULT 0,
+    built_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (kind, family, group_name)
+);

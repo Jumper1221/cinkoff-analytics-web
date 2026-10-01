@@ -324,6 +324,13 @@ def load_prices_v2(conn):
     # без-неё-каждый-запрос-сканирует-13.5M-строк-(-GroupAggregate---21-сек-).
     print("  branch_price_stats: пересборка...")
     _refresh_branch_price_stats(conn)
+    # персистентный-снапшот-дерева-каталога-(-/api/catalog/tree-)-—-цены-только-что-обновились:
+    try:
+        from catalog_tree_build import rebuild_catalog_tree_stats
+        print("  catalog_tree_stats: пересборка...")
+        rebuild_catalog_tree_stats(conn)
+    except Exception as e:  # не-ронять-загрузку-из-за-снапшота
+        print(f"  catalog_tree_stats: не-собран ({e})")
     print(f"PRICES: {total} строк за {time.time()-t0:.0f}s")
 
 

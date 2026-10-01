@@ -405,6 +405,14 @@ def sync_prices(conn, stamp: Path | None = None) -> int:
         log.info("  branch_price_stats: готово")
     except Exception as e:  # не-ронять-синк-из-за-сводки
         log.warning("  branch_price_stats: не-пересобрана (%s)", e)
+    # персистентный-снапшот-дерева-каталога-(-/api/catalog/tree-)-—-цены-только-что-обновились:
+    try:
+        from catalog_tree_build import rebuild_catalog_tree_stats
+        log.info("  catalog_tree_stats: пересборка...")
+        rebuild_catalog_tree_stats(conn)
+        log.info("  catalog_tree_stats: готово")
+    except Exception as e:  # не-ронять-синк-из-за-снапшота
+        log.warning("  catalog_tree_stats: не-собран (%s)", e)
     log.info("PRICES: +%d строк за %.0fs", total, time.time() - t0)
     return total
 
